@@ -1,0 +1,21 @@
+# Skompilowane pliki binarne
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Pliki binarne testów
+*.test
+
+# Raporty z testów i profilowania
+*.out
+*.prof
+coverage.txt
+
+# Konfiguracje vscode
+.vscode/
+
+# Śmieci systemowe
+.DS_Store
+Thumbs.db
