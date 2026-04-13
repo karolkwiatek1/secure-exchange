@@ -23,9 +23,14 @@ func TestTTPRegistrationFlow(t *testing.T) {
 		t.Fatalf("Failed to generate user keys: %v", err)
 	}
 	userID := crypto.GenerateID("Client_PC_1")
+	ttpPubKey := ttpService.privateKey.PublicKey
+	encryptedID, err := crypto.EncryptRSA(&ttpPubKey, []byte(userID))
+	if err != nil {
+		t.Fatalf("Failed to encrypt user id: %v", err)
+	}
 
 	// 3. User registers at TTP
-	userCert, err := ttpService.RegisterEntity(userID, &userPrivKey.PublicKey)
+	userCert, err := ttpService.RegisterEntity(encryptedID, &userPrivKey.PublicKey)
 	if err != nil {
 		t.Fatalf("User registration failed: %v", err)
 	}

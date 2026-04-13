@@ -38,11 +38,20 @@ func NewService(log *logger.EventLogger) (*Service, error) {
 }
 
 // RegisterEntity handles the registration request from User or Server.
-func (s *Service) RegisterEntity(entityID string, pubKey *rsa.PublicKey) ([]byte, error) {
-	if entityID == "" || pubKey == nil {
+func (s *Service) RegisterEntity(encryptedEntityID []byte, pubKey *rsa.PublicKey) ([]byte, error) {
+	if len(encryptedEntityID) == 0 || pubKey == nil {
 		s.log.Log("TTP", "Registration failed: invalid payload received")
 		return nil, errors.New("invalid registration data")
 	}
+
+	// Decrypt ID using TTP private key.
+	decryptedIDBytes, err := crypto.DecryptRSA(s.privateKey, encryptedEntityID)
+	if err != nil {
+		s.log.Log("TTP", "Registration failed: could not decrypt entity ID")
+		return nil, errors.New("failed to decrypt ID")
+	}
+
+	entityID := string(decryptedIDBytes)
 
 	certBytes, err := crypto.IssueCertificate(entityID, pubKey, s.caCert, s.privateKey)
 	if err != nil {

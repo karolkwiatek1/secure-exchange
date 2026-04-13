@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -12,8 +13,8 @@ import (
 )
 
 type RegisterRequest struct {
-	EntityID     string `json:"entity_id"`
-	PublicKeyPEM string `json:"public_key_pem"`
+	EncryptedIDBase64 string `json:"encrypted_id_base64"`
+	PublicKeyPEM      string `json:"public_key_pem"`
 }
 
 type RegisterResponse struct {
@@ -57,12 +58,19 @@ func setupRouter(service *ttp.Service, log *logger.EventLogger) *http.ServeMux {
 			return
 		}
 
+		// decoding from base 64 to raw encrypted bytes
+		encryptedID, err := base64.StdEncoding.DecodeString(req.EncryptedIDBase64)
+		if err != nil {
+			http.Error(w, "Invalid Base64 ID", http.StatusBadRequest)
+			return
+		}
+
 		pubKey, err := crypto.PEMToPublicKey(req.PublicKeyPEM)
 		if err != nil {
 			http.Error(w, "Invalid public key format", http.StatusBadRequest)
 		}
 
-		certBytes, err := service.RegisterEntity(req.EntityID, pubKey)
+		certBytes, err := service.RegisterEntity(encryptedID, pubKey)
 		if err != nil {
 			http.Error(w, "Failed to issue certificate", http.StatusInternalServerError)
 			return
