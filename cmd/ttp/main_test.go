@@ -2,6 +2,9 @@ package main
 
 import (
 	"bytes"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -83,27 +86,47 @@ func TestRegisterEndpoint_Success(t *testing.T) {
 		t.Fatalf("Failed to convert public key to PEM: %v", err)
 	}
 
-	// 2. Prepare JSON payload
+	// 2. Obtaining TTP public key from CA certificate
+	caCertBytes := service.GetCACert()
+	caCert, err := x509.ParseCertificate(caCertBytes)
+	if err != nil {
+		t.Fatalf("Failed to parse TTP CA certificate: %v", err)
+	}
+	ttpPubKey, ok := caCert.PublicKey.(*rsa.PublicKey)
+	if !ok {
+		t.Fatal("TTP public key is not of type RSA")
+	}
+
+	// 3. Encrypting ID with TTP public key and encoding to Base64
+	rawID := "Test_User_HTTP"
+	encryptedID, err := crypto.EncryptRSA(ttpPubKey, []byte(rawID))
+	if err != nil {
+		t.Fatalf("Failed to encrypt ID: %v", err)
+	}
+	encryptedIDBase64 := base64.StdEncoding.EncodeToString(encryptedID)
+
+	// 4. Prepare JSON payload
+
 	reqData := RegisterRequest{
-		EntityID:     "Test_User_HTTP",
-		PublicKeyPEM: pubKeyPEM,
+		EncryptedIDBase64: encryptedIDBase64,
+		PublicKeyPEM:      pubKeyPEM,
 	}
 
 	reqBytes, _ := json.Marshal(reqData)
 
-	// 3. Send POST request
+	// 5. Send POST request
 	req := httptest.NewRequest(http.MethodPost, "/register", bytes.NewReader(reqBytes))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 
 	mux.ServeHTTP(rr, req)
 
-	// 4. Verify HTTP Status
+	// 6. Verify HTTP Status
 	if status := rr.Code; status != http.StatusOK {
 		t.Errorf("Expected 200 OK, got %v. Body: %s", status, rr.Body.String())
 	}
 
-	// 5. Decode response
+	// 7. Decode response
 	var response RegisterResponse
 	if err := json.NewDecoder(rr.Body).Decode(&response); err != nil {
 		t.Fatalf("Failed to decode response JSON: %v", err)
@@ -113,7 +136,7 @@ func TestRegisterEndpoint_Success(t *testing.T) {
 		t.Fatal("Received empty certificate PEM string")
 	}
 
-	// 6. Verify the issued certificate cryptographically using the service's CA
+	// 8. Verify the issued certificate cryptographically using the service's CA
 	issuedCertBytes, err := crypto.PEMToCert(response.CertificatePEM)
 	if err != nil {
 		t.Fatalf("Failed to parse returned PEM certificate: %v", err)
