@@ -12,6 +12,26 @@ import (
 	"secure-exchange/ttp"
 )
 
+type AuthServerRequest struct {
+	ServerID string `json:"server_id"`
+}
+type AuthServerResponse struct {
+	SessionID string `json:"session_id"`
+}
+type AuthUserRequest struct {
+	SessionID             string `json:"session_id"`
+	EncryptedUserIDBase64 string `json:"encrypted_user_id_base64"`
+}
+type AuthUserResponse struct {
+	EncryptedAESForUserBase64 string `json:"encrypted_aes_for_user_base64"`
+}
+type FetchKeyRequest struct {
+	SessionID string `json:"session_id"`
+	ServerID  string `json:"server_id"`
+}
+type FetchKeyResponse struct {
+	EncryptedAESForServerBase64 string `json:"encrypted_aes_for_server_base64"`
+}
 type RegisterRequest struct {
 	EncryptedIDBase64 string `json:"encrypted_id_base64"`
 	PublicKeyPEM      string `json:"public_key_pem"`
@@ -82,6 +102,51 @@ func setupRouter(service *ttp.Service, log *logger.EventLogger) *http.ServeMux {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response)
+	})
+
+	// Endpoint: Authenticate server
+	mux.HandleFunc("/auth-server", func(w http.ResponseWriter, r *http.Request) {
+		var req AuthServerRequest
+		json.NewDecoder(r.Body).Decode(&req)
+
+		sessionID, err := service.InitServerAuth(req.ServerID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusForbidden)
+			return
+		}
+		json.NewEncoder(w).Encode(AuthServerResponse{SessionID: sessionID})
+	})
+
+	// Endpoint: Authenticate user
+	mux.HandleFunc("/auth-user", func(w http.ResponseWriter, r *http.Request) {
+		var req AuthUserRequest
+		json.NewDecoder(r.Body).Decode(&req)
+
+		encryptedUserID, _ := base64.StdEncoding.DecodeString(req.EncryptedUserIDBase64)
+
+		userAES, err := service.AuthUserAndGenerateKey(req.SessionID, encryptedUserID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusForbidden)
+			return
+		}
+		json.NewEncoder(w).Encode(AuthUserResponse{
+			EncryptedAESForUserBase64: base64.StdEncoding.EncodeToString(userAES),
+		})
+	})
+
+	// Endpoint: Fetch key by a server
+	mux.HandleFunc("/fetch-key", func(w http.ResponseWriter, r *http.Request) {
+		var req FetchKeyRequest
+		json.NewDecoder(r.Body).Decode(&req)
+
+		serverAES, err := service.FetchServiceKey(req.SessionID, req.ServerID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusForbidden)
+			return
+		}
+		json.NewEncoder(w).Encode(FetchKeyResponse{
+			EncryptedAESForServerBase64: base64.StdEncoding.EncodeToString(serverAES),
+		})
 	})
 
 	return mux
