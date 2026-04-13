@@ -154,3 +154,81 @@ func (n *Node) RegisterAtTTP() error {
 
 	return nil
 }
+
+// InitSession contacts the TTP to initialize new session
+func (n *Node) InitSession() (string, error) {
+	prefix := string(n.Type)
+	n.Log.Log(prefix, "Requesting new session from TTP...")
+
+	payload := map[string]string{"server_id": n.ID}
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+
+	resp, err := http.Post(fmt.Sprintf("%s/auth-server", n.TTPAddress), "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return "", fmt.Errorf("network error communicating with TTP: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("TTP rejected session request: %s", string(bodyBytes))
+	}
+
+	var result struct {
+		SessionID string `json:"session_id"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", err
+	}
+	n.Log.Log(prefix, "Session initialized successfully. SessionID: "+result.SessionID[:8]+"...")
+	return result.SessionID, nil
+}
+
+// FetchSessionKey fetches encrypted AES key from the TTP, and decrypts it
+func (n *Node) FetchSessionKey(sessionID string) ([]byte, error) {
+	prefix := string(n.Type)
+	n.Log.Log(prefix, "Fetching AES session key from TTP for session: "+sessionID[:8]+"...")
+
+	payload := map[string]string{
+		"session_id": sessionID,
+		"server_id":  n.ID,
+	}
+	jsonData, err := json.Marshal(payload)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := http.Post(fmt.Sprintf("%s/fetch-key", n.TTPAddress), "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, errors.New("TTP rejected key fetch (User might not be authenticated yet)")
+	}
+
+	var result struct {
+		EncryptedAESBase64 string `json:"encrypted_aes_for_server_base64"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+
+	encryptedAES, err := base64.StdEncoding.DecodeString(result.EncryptedAESBase64)
+	if err != nil {
+		return nil, err
+	}
+
+	// Decrypting AES key with server's own private key
+	aesKey, err := crypto.DecryptRSA(n.PrivateKey, encryptedAES)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt AES key: %v", err)
+	}
+
+	n.Log.Log(prefix, "Successfully fetched and decrypted AES session key")
+	return aesKey, nil
+}

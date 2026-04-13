@@ -1,22 +1,92 @@
 package main
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 
+	"secure-exchange/crypto"
 	"secure-exchange/logger"
 	"secure-exchange/node"
 )
 
+// Structs for User <-> Server communication
+type InitRequest struct {
+	Filename string `json:"filename"`
+}
+type InitResponse struct {
+	SessionID string `json:"session_id"`
+	Message   string `json:"message"`
+}
+type DownloadRequest struct {
+	SessionID string `json:"session_id"`
+	Filename  string `json:"filename"`
+}
+type DownloadResponse struct {
+	EncryptedDataBase64 string `json:"encrypted_data_base64"`
+}
+
 func setupRouter(node *node.Node, log *logger.EventLogger) *http.ServeMux {
 	mux := http.NewServeMux()
 
-	// placeholder endpoint
-	mux.HandleFunc("/download", func(w http.ResponseWriter, r *http.Request) {
-		log.Log("HTTP_SERVER", "Received download request from "+r.RemoteAddr)
-		// todo: implement authentication via ttp and aes encryption
-		w.Write([]byte("serwer wstal i ma certyfikat, transfer bedzie pozniej"))
+	// User asks for resource
+	mux.HandleFunc("/request-file", func(w http.ResponseWriter, r *http.Request) {
+		log.Log("HTTP_SERVER", "Received initial file request from User: "+r.RemoteAddr)
+
+		// Server asks TTP for a new session
+		sessionID, err := node.InitSession()
+		if err != nil {
+			http.Error(w, "Failed to initialize session with TTP", http.StatusInternalServerError)
+			return
+		}
+
+		// Server returns SessionID to the User
+		response := InitResponse{
+			SessionID: sessionID,
+			Message:   "Session initialzied. Please authenticate at TTP with this SessionID",
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	})
+
+	// User comes back for resource after authentication
+	mux.HandleFunc("/download-file", func(w http.ResponseWriter, r *http.Request) {
+		var req DownloadRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request", http.StatusBadRequest)
+			return
+		}
+
+		log.Log("HTTP_SERVER", "User returned to download file using Session: "+req.SessionID[:8]+"...")
+
+		// Server tries to fetch AES key from TTP
+		aesKey, err := node.FetchSessionKey(req.SessionID)
+		if err != nil {
+			log.Log("HTTP_SERVER", "Download rejected: User not authenticated at TTP")
+			http.Error(w, "Unauthorized or session invalid", http.StatusForbidden)
+			return
+		}
+
+		// Encrypting resource with AES key
+		dummyFileContent := []byte(fmt.Sprintf("To jest zawartosc pliku '%s'", req.Filename))
+
+		log.Log("HTTP_SERVER", "Encrypting file data with AES-256-GCM...")
+		encryptedData, err := crypto.EncryptAES_GCM(aesKey, dummyFileContent)
+		if err != nil {
+			http.Error(w, "Encryption failed", http.StatusInternalServerError)
+			return
+		}
+
+		response := DownloadResponse{
+			EncryptedDataBase64: base64.StdEncoding.EncodeToString(encryptedData),
+		}
+
+		log.Log("HTTP_SERVER", "Sending encrypted data to User")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
 	})
 
 	return mux
