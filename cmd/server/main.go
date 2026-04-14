@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"path/filepath"
 
 	"secure-exchange/crypto"
 	"secure-exchange/logger"
@@ -13,9 +14,6 @@ import (
 )
 
 // Structs for User <-> Server communication
-type InitRequest struct {
-	Filename string `json:"filename"`
-}
 type InitResponse struct {
 	SessionID string `json:"session_id"`
 	Message   string `json:"message"`
@@ -30,6 +28,25 @@ type DownloadResponse struct {
 
 func setupRouter(node *node.Node, log *logger.EventLogger) *http.ServeMux {
 	mux := http.NewServeMux()
+
+	// Return list of files available for download
+	mux.HandleFunc("/list-files", func(w http.ResponseWriter, r *http.Request) {
+		files, err := os.ReadDir("./shared_files")
+		if err != nil {
+			http.Error(w, "Unable to read directory", http.StatusInternalServerError)
+			return
+		}
+
+		var fileNames []string
+		for _, file := range files {
+			if !file.IsDir() {
+				fileNames = append(fileNames, file.Name())
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(fileNames)
+	})
 
 	// User asks for resource
 	mux.HandleFunc("/request-file", func(w http.ResponseWriter, r *http.Request) {
@@ -70,11 +87,18 @@ func setupRouter(node *node.Node, log *logger.EventLogger) *http.ServeMux {
 			return
 		}
 
-		// Encrypting resource with AES key
-		dummyFileContent := []byte(fmt.Sprintf("To jest zawartosc pliku '%s'", req.Filename))
+		safeFilename := filepath.Base(req.Filename)
+		filePath := filepath.Join(".", "shared_files", safeFilename)
+
+		fileContent, err := os.ReadFile(filePath)
+		if err != nil {
+			log.Log("HTTP_SERVER", "File not found: "+safeFilename)
+			http.Error(w, "File not found", http.StatusNotFound)
+			return
+		}
 
 		log.Log("HTTP_SERVER", "Encrypting file data with AES-256-GCM...")
-		encryptedData, err := crypto.EncryptAES_GCM(aesKey, dummyFileContent)
+		encryptedData, err := crypto.EncryptAES_GCM(aesKey, fileContent)
 		if err != nil {
 			http.Error(w, "Encryption failed", http.StatusInternalServerError)
 			return
@@ -110,6 +134,8 @@ func main() {
 		log.Log("FATAL", fmt.Sprintf("Registration at TTP failed. Maybe check if TTP is running? Error: %v", err))
 		os.Exit(1)
 	}
+
+	os.MkdirAll("./shared_files", os.ModePerm)
 
 	// Setup HTTP server for incoming requests
 	mux := setupRouter(serverNode, log)

@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Prosty Klient TTP</title>
+</head>
+<body>
+
+    <h1>Klient Wymiany Danych</h1>
+    
+    <p><strong>Status:</strong> <span id="status">Węzeł w trybie offline. Wymagana rejestracja TTP.</span></p>
+
+    <div id="sekcjaRejestracji">
+        <hr>
+        <h3>Faza A: Inicjalizacja</h1>
+        <p>Aplikacja jest uruchomiona, ale musi połączyć się z TTP, aby pobrać Root CA i wygenerować certyfikat X.509.</p>
+        <button id="btnRejestruj" onclick="rejestrujWTTP()">Połącz i Zarejestruj (TTP)</button>
+    </div>
+
+    <div id="sekcjaPlikow" style="display: none;">
+        <hr>
+        <h2>Dostępne pliki na serwerze:</h2>
+        <ul id="fileList">
+            <li>Pobieranie listy...</li>
+        </ul>
+    </div>
+
+    <script>
+        function rejestrujWTTP() {
+            const statusEl = document.getElementById('status');
+            const btn = document.getElementById('btnRejestruj');
+            
+            statusEl.innerText = "Trwa łączenie z TTP i kryptograficzna wymiana kluczy...";
+            btn.disabled = true;
+
+            fetch('/api/register', { method: 'POST' })
+                .then(response => {
+                    if (!response.ok) {
+                        return response.text().then(err => { throw new Error(err) });
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    statusEl.innerText = "SUKCES! Węzeł autoryzowany. Certyfikat pobrany.";
+                    document.getElementById('sekcjaRejestracji').style.display = 'none';
+                    document.getElementById('sekcjaPlikow').style.display = 'block';
+                    pobierzListePlikow(); // Uruchamiamy pobieranie listy DOPIERO po autoryzacji
+                })
+                .catch(err => {
+                    statusEl.innerText = "BŁĄD: " + err.message;
+                    btn.disabled = false;
+                });
+        }
+
+        function pobierzListePlikow() {
+            fetch('/api/files')
+                .then(response => response.json())
+                .then(files => {
+                    const list = document.getElementById('fileList');
+                    list.innerHTML = ''; 
+                    
+                    if (files.length === 0) {
+                        list.innerHTML = '<li>Brak plików na serwerze.</li>';
+                        return;
+                    }
+
+                    files.forEach(file => {
+                        const li = document.createElement('li');
+                        li.innerHTML = file + ' <button onclick="pobierzPlik(\'' + file + '\')">Pobierz</button>';
+                        list.appendChild(li);
+                    });
+                })
+                .catch(err => {
+                    document.getElementById('status').innerText = "Błąd komunikacji z Serwerem Plików.";
+                });
+        }
+
+        function pobierzPlik(nazwaPliku) {
+            const statusEl = document.getElementById('status');
+            statusEl.innerText = "Trwa transfer pliku: " + nazwaPliku + " (Faza B i C)...";
+
+            fetch('/api/download?file=' + encodeURIComponent(nazwaPliku))
+                .then(response => {
+                    if (!response.ok) {
+                        return response.text().then(err => { throw new Error(err) });
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    statusEl.innerText = "SUKCES! Zapisano pomyślnie jako: " + data.path;
+                })
+                .catch(err => {
+                    statusEl.innerText = "BŁĄD: " + err.message;
+                });
+        }
+    </script>
+
+</body>
+</html>
