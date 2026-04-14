@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  ttp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["/app/bin/ttp"]
+    ports:
+      - "8181:8181"
+    networks:
+      - shared-net
+
+networks:
+  shared-net:
+    name: secure-exchange-net

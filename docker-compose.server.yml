@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["/app/bin/server"]
+    ports:
+      - "8282:8282"
+    environment:
+      - TTP_ADDRESS=http://ttp:8181
+    volumes:
+      - ./shared_files:/app/shared_files
+    networks:
+      - shared-net
+
+networks:
+  shared-net:
+    name: secure-exchange-net
+    external: true

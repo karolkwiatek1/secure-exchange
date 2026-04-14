@@ -122,8 +122,13 @@ func main() {
 	log := logger.New(os.Stdout)
 	log.Log("SYSTEM", "Booting up File Server Node...")
 
-	// Initialize the Server Node (points to TTP on localhost:8181)
-	serverNode, err := node.NewNode("Secure_File_Server", node.TypeServer, "http://localhost:8181", log)
+	ttpAddress := os.Getenv("TTP_ADDRESS")
+	if ttpAddress == "" {
+		ttpAddress = "http://localhost:8181"
+	}
+
+	// Initialize the Server Node
+	serverNode, err := node.NewNode("Secure_File_Server", node.TypeServer, ttpAddress, log)
 
 	if err != nil {
 		log.Log("FATAL", fmt.Sprintf("Failed to initialize server node: %v", err))
