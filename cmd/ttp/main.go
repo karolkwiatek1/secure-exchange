@@ -23,7 +23,7 @@ type AuthUserRequest struct {
 	EncryptedUserIDBase64 string `json:"encrypted_user_id_base64"`
 }
 type AuthUserResponse struct {
-	EncryptedAESForUserBase64 string `json:"encrypted_aes_for_user_base64"`
+	EncryptedPayloadForUser string `json:"encrypted_payload_for_user"`
 }
 type FetchKeyRequest struct {
 	SessionID string `json:"session_id"`
@@ -124,13 +124,13 @@ func setupRouter(service *ttp.Service, log *logger.EventLogger) *http.ServeMux {
 
 		encryptedUserID, _ := base64.StdEncoding.DecodeString(req.EncryptedUserIDBase64)
 
-		userAES, err := service.AuthUserAndGenerateKey(req.SessionID, encryptedUserID)
+		userPayload, err := service.AuthUserAndGenerateKey(req.SessionID, encryptedUserID)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusForbidden)
 			return
 		}
 		json.NewEncoder(w).Encode(AuthUserResponse{
-			EncryptedAESForUserBase64: base64.StdEncoding.EncodeToString(userAES),
+			EncryptedPayloadForUser: base64.StdEncoding.EncodeToString(userPayload),
 		})
 	})
 

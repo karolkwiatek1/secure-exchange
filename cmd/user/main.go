@@ -22,7 +22,7 @@ type AuthUserRequest struct {
 	EncryptedUserIDBase64 string `json:"encrypted_user_id_base64"`
 }
 type AuthUserResponse struct {
-	EncryptedAESForUserBase64 string `json:"encrypted_aes_for_user_base64"`
+	EncryptedPayloadForUser string `json:"encrypted_payload_for_user"`
 }
 
 func setupRouter(userNode *node.Node, log *logger.EventLogger, ttpAddress, serverAddress string) *http.ServeMux {
@@ -83,9 +83,13 @@ func setupRouter(userNode *node.Node, log *logger.EventLogger, ttpAddress, serve
 		}
 		var initResp struct {
 			SessionID string `json:"session_id"`
+			ServerID  string `json:"server_id"`
 		}
 		json.NewDecoder(resp1.Body).Decode(&initResp)
 		resp1.Body.Close()
+
+		// Store server claimed identity
+		claimedServerID := initResp.ServerID
 
 		// Authentication at TTP and obtaining AES key
 		ttpCert, _ := x509.ParseCertificate(userNode.TTPCaCert)
@@ -108,8 +112,29 @@ func setupRouter(userNode *node.Node, log *logger.EventLogger, ttpAddress, serve
 		json.NewDecoder(resp2.Body).Decode(&authResp)
 		resp2.Body.Close()
 
-		encryptedAES, _ := base64.StdEncoding.DecodeString(authResp.EncryptedAESForUserBase64)
-		aesKey, _ := crypto.DecryptRSA(userNode.PrivateKey, encryptedAES)
+		encryptedPayload, _ := base64.StdEncoding.DecodeString(authResp.EncryptedPayloadForUser)
+		decryptedPayloadBytes, err := crypto.DecryptRSA(userNode.PrivateKey, encryptedPayload)
+		if err != nil {
+			http.Error(w, "Failed to decrypt TTP payload", http.StatusForbidden)
+			return
+		}
+
+		var ttpPayload map[string]string
+		if err := json.Unmarshal(decryptedPayloadBytes, &ttpPayload); err != nil {
+			http.Error(w, "Malformed payload from TTP", http.StatusInternalServerError)
+			return
+		}
+
+		// Check if ServerID returned by TTP is the same as one returned by server
+		if ttpPayload["server_id"] != claimedServerID {
+			log.Log("FATAL", "SECURITY ALERT: Session belongs to untrusted Server! MITM detected.")
+			http.Error(w, "TTP reported invalid Server Identity. Connection aborted.", http.StatusForbidden)
+			return
+		}
+
+		aesKey, _ := base64.StdEncoding.DecodeString(ttpPayload["aes_key"])
+
+		log.Log("USER", "TTP confirmed Server identity cryptographically.")
 
 		// Downloading encrypted file
 		dlReqBody, _ := json.Marshal(map[string]string{

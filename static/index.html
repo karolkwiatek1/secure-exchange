@@ -3,16 +3,35 @@
 <head>
     <meta charset="UTF-8">
     <title>Prosty Klient TTP</title>
+    <style>
+        /* Prosty styl dla naszej konsoli logów */
+        #konsola {
+            height: 250px;
+            overflow-y: auto;
+            background-color: #1e1e1e;
+            color: #00ff00;
+            font-family: monospace;
+            padding: 10px;
+            border: 1px solid #ccc;
+            margin-bottom: 20px;
+        }
+        .log-error { color: #ff5555; }
+        .log-success { color: #55ff55; font-weight: bold; }
+        .log-info { color: #cccccc; }
+    </style>
 </head>
 <body>
 
     <h1>Klient Wymiany Danych</h1>
     
-    <p><strong>Status:</strong> <span id="status">Węzeł w trybie offline. Wymagana rejestracja TTP.</span></p>
+    <h3>Przebieg operacji:</h3>
+    <div id="konsola">
+        <div class="log-info">[SYSTEM] Węzeł w trybie offline. Wymagana rejestracja TTP.</div>
+    </div>
 
     <div id="sekcjaRejestracji">
         <hr>
-        <h3>Faza A: Inicjalizacja</h1>
+        <h3>Faza A: Inicjalizacja</h3>
         <p>Aplikacja jest uruchomiona, ale musi połączyć się z TTP, aby pobrać Root CA i wygenerować certyfikat X.509.</p>
         <button id="btnRejestruj" onclick="rejestrujWTTP()">Połącz i Zarejestruj (TTP)</button>
     </div>
@@ -26,11 +45,31 @@
     </div>
 
     <script>
+        // Funkcja pomocnicza do dodawania nowych linijek do historii
+        function dodajLog(wiadomosc, typ = "info") {
+            const konsola = document.getElementById('konsola');
+            const nowaLinia = document.createElement('div');
+            
+            // Pobranie aktualnego czasu (GG:MM:SS)
+            const czas = new Date().toLocaleTimeString();
+            
+            nowaLinia.innerText = `[${czas}] ${wiadomosc}`;
+            
+            // Kolorowanie w zależności od typu wiadomości
+            if (typ === "error") nowaLinia.className = "log-error";
+            else if (typ === "success") nowaLinia.className = "log-success";
+            else nowaLinia.className = "log-info";
+
+            konsola.appendChild(nowaLinia);
+            
+            // Automatyczne przewijanie na sam dół
+            konsola.scrollTop = konsola.scrollHeight;
+        }
+
         function rejestrujWTTP() {
-            const statusEl = document.getElementById('status');
             const btn = document.getElementById('btnRejestruj');
             
-            statusEl.innerText = "Trwa łączenie z TTP i kryptograficzna wymiana kluczy...";
+            dodajLog("Trwa łączenie z TTP i kryptograficzna wymiana kluczy...", "info");
             btn.disabled = true;
 
             fetch('/api/register', { method: 'POST' })
@@ -41,18 +80,19 @@
                     return response.json();
                 })
                 .then(data => {
-                    statusEl.innerText = "SUKCES! Węzeł autoryzowany. Certyfikat pobrany.";
+                    dodajLog("SUKCES! Węzeł autoryzowany. Certyfikat pobrany.", "success");
                     document.getElementById('sekcjaRejestracji').style.display = 'none';
                     document.getElementById('sekcjaPlikow').style.display = 'block';
-                    pobierzListePlikow(); // Uruchamiamy pobieranie listy DOPIERO po autoryzacji
+                    pobierzListePlikow(); 
                 })
                 .catch(err => {
-                    statusEl.innerText = "BŁĄD: " + err.message;
+                    dodajLog("BŁĄD: " + err.message, "error");
                     btn.disabled = false;
                 });
         }
 
         function pobierzListePlikow() {
+            dodajLog("Pobieranie listy plików z serwera...", "info");
             fetch('/api/files')
                 .then(response => response.json())
                 .then(files => {
@@ -61,6 +101,7 @@
                     
                     if (files.length === 0) {
                         list.innerHTML = '<li>Brak plików na serwerze.</li>';
+                        dodajLog("Otrzymano pustą listę plików.", "info");
                         return;
                     }
 
@@ -69,15 +110,15 @@
                         li.innerHTML = file + ' <button onclick="pobierzPlik(\'' + file + '\')">Pobierz</button>';
                         list.appendChild(li);
                     });
+                    dodajLog(`Załadowano listę plików (${files.length} szt.).`, "success");
                 })
                 .catch(err => {
-                    document.getElementById('status').innerText = "Błąd komunikacji z Serwerem Plików.";
+                    dodajLog("Błąd komunikacji z Serwerem Plików.", "error");
                 });
         }
 
         function pobierzPlik(nazwaPliku) {
-            const statusEl = document.getElementById('status');
-            statusEl.innerText = "Trwa transfer pliku: " + nazwaPliku + " (Faza B i C)...";
+            dodajLog(`INICJALIZACJA TRANSFERU: ${nazwaPliku} (Faza B i C)...`, "info");
 
             fetch('/api/download?file=' + encodeURIComponent(nazwaPliku))
                 .then(response => {
@@ -87,10 +128,10 @@
                     return response.json();
                 })
                 .then(data => {
-                    statusEl.innerText = "SUKCES! Zapisano pomyślnie jako: " + data.path;
+                    dodajLog(`SUKCES! Plik zdeszyfrowano i zapisano jako: ${data.path}`, "success");
                 })
                 .catch(err => {
-                    statusEl.innerText = "BŁĄD: " + err.message;
+                    dodajLog(`ODRZUCONO: ${err.message}`, "error");
                 });
         }
     </script>

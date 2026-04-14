@@ -16,6 +16,7 @@ import (
 // Structs for User <-> Server communication
 type InitResponse struct {
 	SessionID string `json:"session_id"`
+	ServerID  string `json:"server_id"`
 	Message   string `json:"message"`
 }
 type DownloadRequest struct {
@@ -62,6 +63,7 @@ func setupRouter(node *node.Node, log *logger.EventLogger) *http.ServeMux {
 		// Server returns SessionID to the User
 		response := InitResponse{
 			SessionID: sessionID,
+			ServerID:  node.ID,
 			Message:   "Session initialzied. Please authenticate at TTP with this SessionID",
 		}
 
@@ -121,7 +123,7 @@ func main() {
 	log.Log("SYSTEM", "Booting up File Server Node...")
 
 	// Initialize the Server Node (points to TTP on localhost:8181)
-	serverNode, err := node.NewNode("Secure_File_Server_1", node.TypeServer, "http://localhost:8181", log)
+	serverNode, err := node.NewNode("Secure_File_Server", node.TypeServer, "http://localhost:8181", log)
 
 	if err != nil {
 		log.Log("FATAL", fmt.Sprintf("Failed to initialize server node: %v", err))

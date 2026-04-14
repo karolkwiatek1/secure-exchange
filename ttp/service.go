@@ -4,7 +4,9 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"secure-exchange/crypto"
 	"secure-exchange/logger"
@@ -149,9 +151,17 @@ func (s *Service) AuthUserAndGenerateKey(sessionID string, encryptedUserID []byt
 		return nil, err
 	}
 
-	// Encrypting the key for both parties
+	// Encrypting the key for server
 	serverEncryptedAES, _ := crypto.EncryptRSA(session.ServerPubKey, aesKey)
-	userEncryptedAES, _ := crypto.EncryptRSA(userPubKey, aesKey)
+
+	// Encrypting key and server id for user
+	userPayload := map[string]string{
+		"aes_key":   base64.StdEncoding.EncodeToString(aesKey),
+		"server_id": session.ServerID,
+	}
+	userPayloadBytes, _ := json.Marshal(userPayload)
+
+	userEncryptedPayload, _ := crypto.EncryptRSA(userPubKey, userPayloadBytes)
 
 	// Storing AES encrypted with server public key in session, so server can obtain it later
 	s.sessionsMu.Lock()
@@ -160,7 +170,7 @@ func (s *Service) AuthUserAndGenerateKey(sessionID string, encryptedUserID []byt
 
 	s.log.Log("TTP", "User Authenticated. AES key generated and ready for distribution.")
 
-	return userEncryptedAES, nil
+	return userEncryptedPayload, nil
 }
 
 // FetchServerKey allows the server to obtain AES key
