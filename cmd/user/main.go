@@ -7,7 +7,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -54,16 +53,91 @@ func setupRouter(userNode *node.Node, log *logger.EventLogger, ttpAddress, serve
 		json.NewEncoder(w).Encode(map[string]string{"status": "success"})
 	})
 
-	// UI API for getting list of files from the server
+	// UI API for getting list of files from the server (encrypted flow)
 	mux.HandleFunc("/api/files", func(w http.ResponseWriter, r *http.Request) {
-		resp, err := http.Get(serverAddress + "/list-files")
+		// Step 1: Request file-list session from Server
+		resp1, err := http.Post(serverAddress+"/request-file-list", "application/json", nil)
 		if err != nil {
 			http.Error(w, "Cannot reach file server", http.StatusBadGateway)
 			return
 		}
-		defer resp.Body.Close()
+		var initResp struct {
+			SessionID string `json:"session_id"`
+			ServerID  string `json:"server_id"`
+		}
+		json.NewDecoder(resp1.Body).Decode(&initResp)
+		resp1.Body.Close()
+
+		claimedServerID := initResp.ServerID
+
+		// Step 2: Authenticate at TTP and obtain AES key
+		ttpCert, _ := x509.ParseCertificate(userNode.TTPCaCert)
+		ttpPubKey := ttpCert.PublicKey.(*rsa.PublicKey)
+		encryptedID, _ := crypto.EncryptRSA(ttpPubKey, []byte(userNode.ID))
+
+		authReq := AuthUserRequest{
+			SessionID:             initResp.SessionID,
+			EncryptedUserIDBase64: base64.StdEncoding.EncodeToString(encryptedID),
+		}
+		authReqBytes, _ := json.Marshal(authReq)
+		resp2, _ := http.Post(ttpAddress+"/auth-user", "application/json", bytes.NewBuffer(authReqBytes))
+
+		if resp2.StatusCode != http.StatusOK {
+			http.Error(w, "TTP Authentication Failed", http.StatusForbidden)
+			return
+		}
+
+		var authResp AuthUserResponse
+		json.NewDecoder(resp2.Body).Decode(&authResp)
+		resp2.Body.Close()
+
+		encryptedPayload, _ := base64.StdEncoding.DecodeString(authResp.EncryptedPayloadForUser)
+		decryptedPayloadBytes, err := crypto.DecryptRSA(userNode.PrivateKey, encryptedPayload)
+		if err != nil {
+			http.Error(w, "Failed to decrypt TTP payload", http.StatusForbidden)
+			return
+		}
+
+		var ttpPayload map[string]string
+		if err := json.Unmarshal(decryptedPayloadBytes, &ttpPayload); err != nil {
+			http.Error(w, "Malformed payload from TTP", http.StatusInternalServerError)
+			return
+		}
+
+		// Verify server identity
+		if ttpPayload["server_id"] != claimedServerID {
+			log.Log("FATAL", "SECURITY ALERT: Session belongs to untrusted Server! MITM detected.")
+			http.Error(w, "TTP reported invalid Server Identity. Connection aborted.", http.StatusForbidden)
+			return
+		}
+
+		aesKey, _ := base64.StdEncoding.DecodeString(ttpPayload["aes_key"])
+
+		log.Log("USER", "TTP confirmed Server identity cryptographically.")
+
+		// Step 3: Request encrypted file list from Server
+		dlReqBody, _ := json.Marshal(map[string]string{"session_id": initResp.SessionID})
+		resp3, err := http.Post(serverAddress+"/list-files-encrypted", "application/json", bytes.NewBuffer(dlReqBody))
+		if err != nil {
+			http.Error(w, "Cannot reach file server", http.StatusBadGateway)
+			return
+		}
+
+		var listResp struct {
+			EncryptedDataBase64 string `json:"encrypted_data_base64"`
+		}
+		json.NewDecoder(resp3.Body).Decode(&listResp)
+		resp3.Body.Close()
+
+		encryptedData, _ := base64.StdEncoding.DecodeString(listResp.EncryptedDataBase64)
+		plaintext, err := crypto.DecryptAES_GCM(aesKey, encryptedData)
+		if err != nil {
+			http.Error(w, "Data corrupted or MITM attack!", http.StatusInternalServerError)
+			return
+		}
+
 		w.Header().Set("Content-Type", "application/json")
-		io.Copy(w, resp.Body)
+		w.Write(plaintext)
 	})
 
 	// UI API for initalizing safe download

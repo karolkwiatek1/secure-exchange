@@ -30,25 +30,6 @@ type DownloadResponse struct {
 func setupRouter(node *node.Node, log *logger.EventLogger) *http.ServeMux {
 	mux := http.NewServeMux()
 
-	// Return list of files available for download
-	mux.HandleFunc("/list-files", func(w http.ResponseWriter, r *http.Request) {
-		files, err := os.ReadDir("./shared_files")
-		if err != nil {
-			http.Error(w, "Unable to read directory", http.StatusInternalServerError)
-			return
-		}
-
-		var fileNames []string
-		for _, file := range files {
-			if !file.IsDir() {
-				fileNames = append(fileNames, file.Name())
-			}
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(fileNames)
-	})
-
 	// User asks for resource
 	mux.HandleFunc("/request-file", func(w http.ResponseWriter, r *http.Request) {
 		log.Log("HTTP_SERVER", "Received initial file request from User: "+r.RemoteAddr)
@@ -65,6 +46,26 @@ func setupRouter(node *node.Node, log *logger.EventLogger) *http.ServeMux {
 			SessionID: sessionID,
 			ServerID:  node.ID,
 			Message:   "Session initialzied. Please authenticate at TTP with this SessionID",
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	})
+
+	// User asks for file list
+	mux.HandleFunc("/request-file-list", func(w http.ResponseWriter, r *http.Request) {
+		log.Log("HTTP_SERVER", "Received file list request from User: "+r.RemoteAddr)
+
+		sessionID, err := node.InitSession()
+		if err != nil {
+			http.Error(w, "Failed to initialize session with TTP", http.StatusInternalServerError)
+			return
+		}
+
+		response := InitResponse{
+			SessionID: sessionID,
+			ServerID:  node.ID,
+			Message:   "Session initialized for file listing. Please authenticate at TTP.",
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -111,6 +112,56 @@ func setupRouter(node *node.Node, log *logger.EventLogger) *http.ServeMux {
 		}
 
 		log.Log("HTTP_SERVER", "Sending encrypted data to User")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+	})
+
+	// User requests encrypted file list after authentication
+	mux.HandleFunc("/list-files-encrypted", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			SessionID string `json:"session_id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request", http.StatusBadRequest)
+			return
+		}
+
+		log.Log("HTTP_SERVER", "User requested encrypted file list using Session: "+req.SessionID[:8]+"...")
+
+		aesKey, err := node.FetchSessionKey(req.SessionID)
+		if err != nil {
+			log.Log("HTTP_SERVER", "File list request rejected: User not authenticated at TTP")
+			http.Error(w, "Unauthorized or session invalid", http.StatusForbidden)
+			return
+		}
+
+		files, err := os.ReadDir("./shared_files")
+		if err != nil {
+			http.Error(w, "Unable to read directory", http.StatusInternalServerError)
+			return
+		}
+
+		var fileNames []string
+		for _, file := range files {
+			if !file.IsDir() {
+				fileNames = append(fileNames, file.Name())
+			}
+		}
+
+		fileListJSON, _ := json.Marshal(fileNames)
+
+		log.Log("HTTP_SERVER", "Encrypting file list with AES-256-GCM...")
+		encryptedData, err := crypto.EncryptAES_GCM(aesKey, fileListJSON)
+		if err != nil {
+			http.Error(w, "Encryption failed", http.StatusInternalServerError)
+			return
+		}
+
+		response := DownloadResponse{
+			EncryptedDataBase64: base64.StdEncoding.EncodeToString(encryptedData),
+		}
+
+		log.Log("HTTP_SERVER", "Sending encrypted file list to User")
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response)
 	})
