@@ -1,3 +1,4 @@
+// Package logger provides thread-safe event logging with timestamps.
 package logger
 
 import (

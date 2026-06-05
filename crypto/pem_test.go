@@ -6,6 +6,7 @@ import (
 	"testing"
 )
 
+// TestPublicKeyPEMConversion tests PEM encoding and decoding of RSA public keys.
 func TestPublicKeyPEMConversion(t *testing.T) {
 	// 1. Generate a real RSA key pair
 	privKey, err := GenerateRSAKeys()
@@ -36,6 +37,7 @@ func TestPublicKeyPEMConversion(t *testing.T) {
 	}
 }
 
+// TestCertificatePEMConversion tests PEM encoding and decoding of X.509 certificates.
 func TestCertificatePEMConversion(t *testing.T) {
 	// 1. Generate a real certificate (using Root CA for testing)
 	privKey, _ := GenerateRSAKeys()
@@ -62,6 +64,7 @@ func TestCertificatePEMConversion(t *testing.T) {
 	}
 }
 
+// TestPEMParsingFailures tests error handling for invalid PEM inputs.
 func TestPEMParsingFailures(t *testing.T) {
 	invalidPEM := "-----BEGIN PUBLIC KEY-----\nNotABase64String!\n-----END PUBLIC KEY-----"
 	garbageData := "Just some random unformatted text without PEM headers"

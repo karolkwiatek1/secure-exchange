@@ -6,6 +6,7 @@ import (
 	"testing"
 )
 
+// TestEventLogger tests thread-safe logging with timestamps.
 func TestEventLogger(t *testing.T) {
 	var buf bytes.Buffer
 	l := New(&buf)

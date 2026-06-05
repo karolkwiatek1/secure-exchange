@@ -5,6 +5,7 @@ import (
 	"testing"
 )
 
+// TestGenerateRSAKeys tests RSA key pair generation and validation.
 func TestGenerateRSAKeys(t *testing.T) {
 	privKey, err := GenerateRSAKeys()
 	if err != nil {
@@ -20,6 +21,7 @@ func TestGenerateRSAKeys(t *testing.T) {
 	}
 }
 
+// TestGenerateID tests deterministic ID generation from a name string.
 func TestGenerateID(t *testing.T) {
 	id1 := GenerateID("Wenzel_TTP")
 	id2 := GenerateID("Wenzel_TTP")
@@ -33,6 +35,7 @@ func TestGenerateID(t *testing.T) {
 	}
 }
 
+// TestGenerateSessionKey tests AES session key generation.
 func TestGenerateSessionKey(t *testing.T) {
 	key, err := GenerateSessionKey()
 	if err != nil {
@@ -43,6 +46,7 @@ func TestGenerateSessionKey(t *testing.T) {
 	}
 }
 
+// TestAES_GCM tests AES-256-GCM encryption and decryption.
 func TestAES_GCM(t *testing.T) {
 	key, _ := GenerateSessionKey()
 	plaintext := []byte("Secret file content to be sent over the network")
@@ -71,6 +75,7 @@ func TestAES_GCM(t *testing.T) {
 	}
 }
 
+// TestRSAEncryption tests RSA-OAEP encryption and decryption.
 func TestRSAEncryption(t *testing.T) {
 	privKey, _ := GenerateRSAKeys()
 	pubKey := &privKey.PublicKey

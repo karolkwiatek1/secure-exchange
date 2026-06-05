@@ -1,3 +1,4 @@
+// Binary ttp runs the Trusted Third Party HTTP server.
 package main
 
 import (
@@ -7,40 +8,55 @@ import (
 	"net/http"
 	"os"
 
-	"secure-exchange/crypto"
-	"secure-exchange/logger"
-	"secure-exchange/ttp"
+	"github.com/karolkwiatek1/secure-exchange/crypto"
+	"github.com/karolkwiatek1/secure-exchange/logger"
+	"github.com/karolkwiatek1/secure-exchange/ttp"
 )
 
+// AuthServerRequest represents a server authentication request.
 type AuthServerRequest struct {
 	ServerID string `json:"server_id"`
 }
+
+// AuthServerResponse represents a server authentication response.
 type AuthServerResponse struct {
 	SessionID string `json:"session_id"`
 }
+
+// AuthUserRequest represents a user authentication request.
 type AuthUserRequest struct {
 	SessionID             string `json:"session_id"`
 	EncryptedUserIDBase64 string `json:"encrypted_user_id_base64"`
 }
+
+// AuthUserResponse represents a user authentication response.
 type AuthUserResponse struct {
 	EncryptedPayloadForUser string `json:"encrypted_payload_for_user"`
 }
+
+// FetchKeyRequest represents a request to fetch an encrypted session key.
 type FetchKeyRequest struct {
 	SessionID string `json:"session_id"`
 	ServerID  string `json:"server_id"`
 }
+
+// FetchKeyResponse represents a response containing the encrypted AES key.
 type FetchKeyResponse struct {
 	EncryptedAESForServerBase64 string `json:"encrypted_aes_for_server_base64"`
 }
+
+// RegisterRequest represents an entity registration request.
 type RegisterRequest struct {
 	EncryptedIDBase64 string `json:"encrypted_id_base64"`
 	PublicKeyPEM      string `json:"public_key_pem"`
 }
 
+// RegisterResponse represents an entity registration response.
 type RegisterResponse struct {
 	CertificatePEM string `json:"certificate_pem"`
 }
 
+// CAResponse represents the CA certificate response.
 type CAResponse struct {
 	CACertificatePEM string `json:"ca_certificate_pem"`
 }

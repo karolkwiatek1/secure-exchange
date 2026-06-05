@@ -1,3 +1,4 @@
+// Binary server runs the file server that serves encrypted files to users.
 package main
 
 import (
@@ -8,21 +9,25 @@ import (
 	"os"
 	"path/filepath"
 
-	"secure-exchange/crypto"
-	"secure-exchange/logger"
-	"secure-exchange/node"
+	"github.com/karolkwiatek1/secure-exchange/crypto"
+	"github.com/karolkwiatek1/secure-exchange/logger"
+	"github.com/karolkwiatek1/secure-exchange/node"
 )
 
-// Structs for User <-> Server communication
+// InitResponse represents the initial session response sent to the user.
 type InitResponse struct {
 	SessionID string `json:"session_id"`
 	ServerID  string `json:"server_id"`
 	Message   string `json:"message"`
 }
+
+// DownloadRequest represents a file download request from the user.
 type DownloadRequest struct {
 	SessionID string `json:"session_id"`
 	Filename  string `json:"filename"`
 }
+
+// DownloadResponse represents an encrypted file download response.
 type DownloadResponse struct {
 	EncryptedDataBase64 string `json:"encrypted_data_base64"`
 }

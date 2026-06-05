@@ -1,3 +1,4 @@
+// Package node provides the participant representation in the secure exchange network.
 package node
 
 import (
@@ -11,16 +12,18 @@ import (
 	"io"
 	"net/http"
 
-	"secure-exchange/crypto"
-	"secure-exchange/logger"
+	"github.com/karolkwiatek1/secure-exchange/crypto"
+	"github.com/karolkwiatek1/secure-exchange/logger"
 )
 
-// Enum for node types
+// NodeType represents the type of participant in the network.
 type NodeType string
 
 const (
+	// TypeServer identifies the node as a server participant.
 	TypeServer NodeType = "SERVER"
-	TypeUser   NodeType = "USER"
+	// TypeUser identifies the node as a user participant.
+	TypeUser NodeType = "USER"
 )
 
 // Node represents the participant in the network (user or server).

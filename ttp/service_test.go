@@ -2,11 +2,12 @@ package ttp
 
 import (
 	"bytes"
-	"secure-exchange/crypto"
-	"secure-exchange/logger"
+	"github.com/karolkwiatek1/secure-exchange/crypto"
+	"github.com/karolkwiatek1/secure-exchange/logger"
 	"testing"
 )
 
+// TestTTPRegistrationFlow tests the full entity registration flow at the TTP.
 func TestTTPRegistrationFlow(t *testing.T) {
 	// 1. Initialize Logger and TTP Service
 	var buf bytes.Buffer

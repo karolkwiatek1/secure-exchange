@@ -5,6 +5,7 @@ import (
 	"testing"
 )
 
+// TestGenerateRootCA tests self-signed root CA certificate generation.
 func TestGenerateRootCA(t *testing.T) {
 	// 1. Generate a private key for the CA
 	caPrivKey, err := GenerateRSAKeys()
@@ -35,6 +36,7 @@ func TestGenerateRootCA(t *testing.T) {
 	}
 }
 
+// TestIssueAndVerifyCertificate tests certificate issuance and verification.
 func TestIssueAndVerifyCertificate(t *testing.T) {
 	// 1. Setup CA
 	caPrivKey, _ := GenerateRSAKeys()
@@ -63,6 +65,7 @@ func TestIssueAndVerifyCertificate(t *testing.T) {
 	}
 }
 
+// TestVerifyCertificate_Failures tests certificate verification failure scenarios.
 func TestVerifyCertificate_Failures(t *testing.T) {
 	// 1. Setup Valid CA and issue a certificate for an entity
 	caPrivKey1, _ := GenerateRSAKeys()

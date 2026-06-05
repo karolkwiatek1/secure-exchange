@@ -11,9 +11,9 @@ import (
 	"strings"
 	"testing"
 
-	"secure-exchange/crypto"
-	"secure-exchange/logger"
-	"secure-exchange/ttp"
+	"github.com/karolkwiatek1/secure-exchange/crypto"
+	"github.com/karolkwiatek1/secure-exchange/logger"
+	"github.com/karolkwiatek1/secure-exchange/ttp"
 )
 
 // setupTestEnvironment initializes the router and service for testing.
@@ -30,6 +30,7 @@ func setupTestEnvironment(t *testing.T) (*http.ServeMux, *ttp.Service) {
 	return mux, service
 }
 
+// TestCAEndpoint tests the GET /ca endpoint.
 func TestCAEndpoint(t *testing.T) {
 	mux, _ := setupTestEnvironment(t)
 
@@ -58,6 +59,7 @@ func TestCAEndpoint(t *testing.T) {
 	}
 }
 
+// TestRegisterEndpoint_MethodNotAllowed tests that GET /register returns 405.
 func TestRegisterEndpoint_MethodNotAllowed(t *testing.T) {
 	mux, _ := setupTestEnvironment(t)
 
@@ -72,6 +74,7 @@ func TestRegisterEndpoint_MethodNotAllowed(t *testing.T) {
 	}
 }
 
+// TestRegisterEndpoint_Success tests the full POST /register flow.
 func TestRegisterEndpoint_Success(t *testing.T) {
 	mux, service := setupTestEnvironment(t)
 

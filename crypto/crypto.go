@@ -1,3 +1,4 @@
+// Package crypto provides cryptographic utilities for secure key exchange.
 package crypto
 
 import (
@@ -82,7 +83,7 @@ func DecryptAES_GCM(key, ciphertext []byte) ([]byte, error) {
 	return plaintext, nil
 }
 
-// EncryptTSA encrypts small data chunks (eg. AES key, ID) using receiver public key
+// EncryptRSA encrypts small data chunks (eg. AES key, ID) using receiver public key
 func EncryptRSA(publicKey *rsa.PublicKey, message []byte) ([]byte, error) {
 	hash := sha256.New()
 	ciphertext, err := rsa.EncryptOAEP(hash, rand.Reader, publicKey, message, nil)

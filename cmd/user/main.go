@@ -1,3 +1,4 @@
+// Binary user runs the user (client) HTTP server with web frontend.
 package main
 
 import (
@@ -11,15 +12,18 @@ import (
 	"os"
 	"path/filepath"
 
-	"secure-exchange/crypto"
-	"secure-exchange/logger"
-	"secure-exchange/node"
+	"github.com/karolkwiatek1/secure-exchange/crypto"
+	"github.com/karolkwiatek1/secure-exchange/logger"
+	"github.com/karolkwiatek1/secure-exchange/node"
 )
 
+// AuthUserRequest represents a user authentication request sent to TTP.
 type AuthUserRequest struct {
 	SessionID             string `json:"session_id"`
 	EncryptedUserIDBase64 string `json:"encrypted_user_id_base64"`
 }
+
+// AuthUserResponse represents a user authentication response from TTP.
 type AuthUserResponse struct {
 	EncryptedPayloadForUser string `json:"encrypted_payload_for_user"`
 }

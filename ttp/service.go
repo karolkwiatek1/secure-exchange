@@ -1,3 +1,4 @@
+// Package ttp provides the Trusted Third Party service for secure key exchange.
 package ttp
 
 import (
@@ -8,8 +9,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"secure-exchange/crypto"
-	"secure-exchange/logger"
+	"github.com/karolkwiatek1/secure-exchange/crypto"
+	"github.com/karolkwiatek1/secure-exchange/logger"
 	"sync"
 )
 
