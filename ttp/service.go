@@ -89,17 +89,32 @@ func (s *Service) GetCACert() []byte {
 }
 
 // InitServerAuth verifies the server and creates a remporary session key
-func (s *Service) InitServerAuth(serverID string) (string, error) {
+func (s *Service) InitServerAuth(serverID string, certPEM string) (string, error) {
 	s.log.Log("TTP", "Server Authentication requested by: "+serverID[:8]+"...")
 
-	serverCertBytes, exists := s.registry[serverID]
-	if !exists {
-		s.log.Log("TTP", "Authentication rejected: unknnown Server ID")
-		return "", errors.New("server not registered")
+	certBytes, err := crypto.PEMToCert(certPEM)
+	if err != nil {
+		s.log.Log("TTP", "Authentication rejected: invalid server certificate format")
+		return "", errors.New("invalid certificate format")
 	}
 
-	serverCert, _ := x509.ParseCertificate(serverCertBytes)
-	serverPubKey := serverCert.PublicKey.(*rsa.PublicKey)
+	if err := crypto.VerifyCertificate(certBytes, s.caCert); err != nil {
+		s.log.Log("TTP", "Authentication rejected: server certificate not signed by trusted CA")
+		return "", errors.New("certificate verification failed")
+	}
+
+	cert, err := x509.ParseCertificate(certBytes)
+	if err != nil {
+		s.log.Log("TTP", "Authentication rejected: failed to parse server certificate")
+		return "", errors.New("failed to parse certificate")
+	}
+
+	if cert.Subject.CommonName != serverID {
+		s.log.Log("TTP", "Authentication rejected: certificate CN does not match server ID")
+		return "", errors.New("certificate does not belong to claimed server")
+	}
+
+	serverPubKey := cert.PublicKey.(*rsa.PublicKey)
 
 	// generating unique SessionID
 	sessionBytes := make([]byte, 16)
@@ -119,7 +134,7 @@ func (s *Service) InitServerAuth(serverID string) (string, error) {
 }
 
 // AuthUserAndGenerateKey verifies the user and creates AES key
-func (s *Service) AuthUserAndGenerateKey(sessionID string, encryptedUserID []byte) ([]byte, error) {
+func (s *Service) AuthUserAndGenerateKey(sessionID string, encryptedUserID []byte, certPEM string) ([]byte, error) {
 	s.sessionsMu.Lock()
 	session, exists := s.sessions[sessionID]
 	s.sessionsMu.Unlock()
@@ -137,14 +152,29 @@ func (s *Service) AuthUserAndGenerateKey(sessionID string, encryptedUserID []byt
 	}
 	userID := string(decryptedUserIDBytes)
 
-	userCertBytes, exists := s.registry[userID]
-	if !exists {
-		s.log.Log("TTP", "Auth rejected: unknown User ID")
-		return nil, errors.New("user not registered")
+	certBytes, err := crypto.PEMToCert(certPEM)
+	if err != nil {
+		s.log.Log("TTP", "Auth rejected: invalid certificate format from user")
+		return nil, errors.New("invalid certificate format")
 	}
 
-	userCert, _ := x509.ParseCertificate(userCertBytes)
-	userPubKey := userCert.PublicKey.(*rsa.PublicKey)
+	if err := crypto.VerifyCertificate(certBytes, s.caCert); err != nil {
+		s.log.Log("TTP", "Auth rejected: certificate not signed by trusted CA")
+		return nil, errors.New("certificate verification failed")
+	}
+
+	cert, err := x509.ParseCertificate(certBytes)
+	if err != nil {
+		s.log.Log("TTP", "Auth rejected: failed to parse certificate")
+		return nil, errors.New("failed to parse certificate")
+	}
+
+	if cert.Subject.CommonName != userID {
+		s.log.Log("TTP", "Auth rejected: certificate CN does not match claimed user ID")
+		return nil, errors.New("certificate does not belong to claimed user")
+	}
+
+	userPubKey := cert.PublicKey.(*rsa.PublicKey)
 
 	// Generating AES (256-bit) key
 	aesKey, err := crypto.GenerateSessionKey()

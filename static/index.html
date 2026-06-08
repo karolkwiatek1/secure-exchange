@@ -44,6 +44,17 @@
         </ul>
     </div>
 
+    <div id="sekcjaTestow" style="display: none;">
+        <hr>
+        <h3>Testy bezpieczeństwa</h3>
+        <p>Uruchom MITM proxy (<code>go run ./cmd/mitm</code>) przed testem MITM.</p>
+        <button id="btnTestMITM" onclick="testMITM()">Symuluj atak MITM (spoofing server_id)</button>
+        <span id="mitmResult" style="margin-left: 12px;"></span>
+        <br><br>
+        <button id="btnTestForgedCert" onclick="testForgedCert()">Symuluj fałszywy certyfikat</button>
+        <span id="forgedCertResult" style="margin-left: 12px;"></span>
+    </div>
+
     <script>
         // Funkcja pomocnicza do dodawania nowych linijek do historii
         function dodajLog(wiadomosc, typ = "info") {
@@ -83,6 +94,7 @@
                     dodajLog("SUKCES! Węzeł autoryzowany. Certyfikat pobrany.", "success");
                     document.getElementById('sekcjaRejestracji').style.display = 'none';
                     document.getElementById('sekcjaPlikow').style.display = 'block';
+                    document.getElementById('sekcjaTestow').style.display = 'block';
                     pobierzListePlikow(); 
                 })
                 .catch(err => {
@@ -132,6 +144,75 @@
                 })
                 .catch(err => {
                     dodajLog(`ODRZUCONO: ${err.message}`, "error");
+                });
+        }
+
+        function testMITM() {
+            const btn = document.getElementById('btnTestMITM');
+            const result = document.getElementById('mitmResult');
+
+            btn.disabled = true;
+            result.innerText = '';
+            dodajLog("=== ROZPOCZYNANIE TESTU MITM ===", "info");
+            dodajLog("Łączenie przez MITM proxy (port 9393)...", "info");
+
+            fetch('/api/test-mitm', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'attack_blocked') {
+                        dodajLog("SUKCES TESTU: Atak MITM został wykryty i zablokowany!", "success");
+                        dodajLog(`Szczegóły: ${data.detail}`, "success");
+                        result.innerHTML = '<span style="color: #55ff55; font-weight: bold;">&#10003; ATAK ZABLOKOWANY</span>';
+                    } else if (data.status === 'vulnerable') {
+                        dodajLog("NIEBEZPIECZEŃSTWO: System NIE wykrył ataku MITM!", "error");
+                        dodajLog(data.detail, "error");
+                        result.innerHTML = '<span style="color: #ff5555; font-weight: bold;">&#10007; ATAK PRZEPUSZCZONY!</span>';
+                    } else {
+                        dodajLog(`Błąd testu: ${data.detail}`, "error");
+                        result.innerHTML = '<span style="color: #ffcc00;">Błąd: sprawdź czy proxy działa</span>';
+                    }
+                    btn.disabled = false;
+                    dodajLog("=== KONIEC TESTU MITM ===", "info");
+                })
+                .catch(err => {
+                    dodajLog(`Błąd testu: ${err.message}`, "error");
+                    dodajLog("Upewnij się że MITM proxy działa (go run ./cmd/mitm)", "error");
+                    result.innerHTML = '<span style="color: #ffcc00;">Błąd połączenia z proxy</span>';
+                    btn.disabled = false;
+                });
+        }
+
+        function testForgedCert() {
+            const btn = document.getElementById('btnTestForgedCert');
+            const result = document.getElementById('forgedCertResult');
+
+            btn.disabled = true;
+            result.innerText = '';
+            dodajLog("=== ROZPOCZYNANIE TESTU FAŁSZYWEGO CERTYFIKATU ===", "info");
+            dodajLog("Wysyłanie self-signed certyfikatu do TTP...", "info");
+
+            fetch('/api/test-forged-cert', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'attack_blocked') {
+                        dodajLog("SUKCES TESTU: TTP odrzucił fałszywy certyfikat!", "success");
+                        dodajLog(`Szczegóły: ${data.detail}`, "success");
+                        result.innerHTML = '<span style="color: #55ff55; font-weight: bold;">&#10003; CERTYFIKAT ODRZUCONY</span>';
+                    } else if (data.status === 'vulnerable') {
+                        dodajLog("NIEBEZPIECZEŃSTWO: TTP zaakceptował fałszywy certyfikat!", "error");
+                        dodajLog(data.detail, "error");
+                        result.innerHTML = '<span style="color: #ff5555; font-weight: bold;">&#10007; CERTYFIKAT ZAAKCEPTOWANY!</span>';
+                    } else {
+                        dodajLog(`Błąd testu: ${data.detail}`, "error");
+                        result.innerHTML = '<span style="color: #ffcc00;">Błąd: sprawdź połączenie</span>';
+                    }
+                    btn.disabled = false;
+                    dodajLog("=== KONIEC TESTU FAŁSZYWEGO CERTYFIKATU ===", "info");
+                })
+                .catch(err => {
+                    dodajLog(`Błąd testu: ${err.message}`, "error");
+                    result.innerHTML = '<span style="color: #ffcc00;">Błąd połączenia</span>';
+                    btn.disabled = false;
                 });
         }
     </script>

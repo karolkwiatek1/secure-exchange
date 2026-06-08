@@ -15,7 +15,8 @@ import (
 
 // AuthServerRequest represents a server authentication request.
 type AuthServerRequest struct {
-	ServerID string `json:"server_id"`
+	ServerID      string `json:"server_id"`
+	CertificatePEM string `json:"certificate_pem"`
 }
 
 // AuthServerResponse represents a server authentication response.
@@ -27,6 +28,7 @@ type AuthServerResponse struct {
 type AuthUserRequest struct {
 	SessionID             string `json:"session_id"`
 	EncryptedUserIDBase64 string `json:"encrypted_user_id_base64"`
+	CertificatePEM        string `json:"certificate_pem"`
 }
 
 // AuthUserResponse represents a user authentication response.
@@ -125,7 +127,7 @@ func setupRouter(service *ttp.Service, log *logger.EventLogger) *http.ServeMux {
 		var req AuthServerRequest
 		json.NewDecoder(r.Body).Decode(&req)
 
-		sessionID, err := service.InitServerAuth(req.ServerID)
+		sessionID, err := service.InitServerAuth(req.ServerID, req.CertificatePEM)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusForbidden)
 			return
@@ -140,7 +142,7 @@ func setupRouter(service *ttp.Service, log *logger.EventLogger) *http.ServeMux {
 
 		encryptedUserID, _ := base64.StdEncoding.DecodeString(req.EncryptedUserIDBase64)
 
-		userPayload, err := service.AuthUserAndGenerateKey(req.SessionID, encryptedUserID)
+		userPayload, err := service.AuthUserAndGenerateKey(req.SessionID, encryptedUserID, req.CertificatePEM)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusForbidden)
 			return

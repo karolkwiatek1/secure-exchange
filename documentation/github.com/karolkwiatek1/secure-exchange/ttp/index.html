@@ -576,7 +576,7 @@
 
       
   <span class="go-Main-headerDetailItem" data-test-id="UnitHeader-commitTime">
-    Published: Jun  5, 2026
+    Published: Jun  8, 2026
   </span>
 
       
@@ -814,9 +814,9 @@
                 
                 
                   <li>
-                    <a href="#Service.AuthUserAndGenerateKey" title="(s) AuthUserAndGenerateKey(sessionID, encryptedUserID)"
+                    <a href="#Service.AuthUserAndGenerateKey" title="(s) AuthUserAndGenerateKey(sessionID, encryptedUserID, certPEM)"
                         data-gtmc="doc outline link">
-                      (s) AuthUserAndGenerateKey(sessionID, encryptedUserID)
+                      (s) AuthUserAndGenerateKey(sessionID, encryptedUserID, certPEM)
                     </a>
                   </li>
                 
@@ -922,7 +922,7 @@
 </ul></li>
 <li><ul class="Documentation-indexTypeMethods">
 <li>
-            <a href="#Service.AuthUserAndGenerateKey">func (s *Service) AuthUserAndGenerateKey(sessionID string, encryptedUserID []byte) ([]byte, error)</a></li>
+            <a href="#Service.AuthUserAndGenerateKey">func (s *Service) AuthUserAndGenerateKey(sessionID string, encryptedUserID []byte, certPEM string) ([]byte, error)</a></li>
 <li>
             <a href="#Service.FetchServiceKey">func (s *Service) FetchServiceKey(sessionID string, serverID string) ([]byte, error)</a></li>
 <li>
@@ -1024,7 +1024,7 @@
 
     
     <div class="Documentation-declaration">
-      <pre>func (s *<a href="#Service">Service</a>) AuthUserAndGenerateKey(sessionID <a href="../../../../builtin/index.html">string</a>, encryptedUserID []<a href="../../../../builtin/index.html">byte</a>) ([]<a href="../../../../builtin/index.html">byte</a>, <a href="../../../../builtin/index.html">error</a>)</pre>
+      <pre>func (s *<a href="#Service">Service</a>) AuthUserAndGenerateKey(sessionID <a href="../../../../builtin/index.html">string</a>, encryptedUserID []<a href="../../../../builtin/index.html">byte</a>, certPEM <a href="../../../../builtin/index.html">string</a>) ([]<a href="../../../../builtin/index.html">byte</a>, <a href="../../../../builtin/index.html">error</a>)</pre>
     </div>
   <p>AuthUserAndGenerateKey verifies the user and creates AES key
 </p>

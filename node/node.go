@@ -163,7 +163,10 @@ func (n *Node) InitSession() (string, error) {
 	prefix := string(n.Type)
 	n.Log.Log(prefix, "Requesting new session from TTP...")
 
-	payload := map[string]string{"server_id": n.ID}
+	payload := map[string]string{
+		"server_id":       n.ID,
+		"certificate_pem": n.CertPEM,
+	}
 	jsonData, err := json.Marshal(payload)
 	if err != nil {
 		return "", err

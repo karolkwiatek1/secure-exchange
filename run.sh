@@ -31,5 +31,6 @@ sleep 2
 
 echo "=== All services running. Press Ctrl+C to stop. ==="
 echo "    User web UI: http://localhost:9000"
+echo "    MITM test:   go run ./cmd/mitm      (then click 'Symuluj atak MITM' in UI)"
 
 wait

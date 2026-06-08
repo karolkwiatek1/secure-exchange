@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -21,6 +22,7 @@ import (
 type AuthUserRequest struct {
 	SessionID             string `json:"session_id"`
 	EncryptedUserIDBase64 string `json:"encrypted_user_id_base64"`
+	CertificatePEM        string `json:"certificate_pem"`
 }
 
 // AuthUserResponse represents a user authentication response from TTP.
@@ -82,6 +84,7 @@ func setupRouter(userNode *node.Node, log *logger.EventLogger, ttpAddress, serve
 		authReq := AuthUserRequest{
 			SessionID:             initResp.SessionID,
 			EncryptedUserIDBase64: base64.StdEncoding.EncodeToString(encryptedID),
+			CertificatePEM:        userNode.CertPEM,
 		}
 		authReqBytes, _ := json.Marshal(authReq)
 		resp2, _ := http.Post(ttpAddress+"/auth-user", "application/json", bytes.NewBuffer(authReqBytes))
@@ -144,6 +147,161 @@ func setupRouter(userNode *node.Node, log *logger.EventLogger, ttpAddress, serve
 		w.Write(plaintext)
 	})
 
+	// UI API for simulating MITM attack via proxy
+	mux.HandleFunc("/api/test-mitm", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		mitmAddress := "http://localhost:9393"
+
+		resp1, err := http.Post(mitmAddress+"/request-file-list", "application/json", nil)
+		if err != nil {
+			json.NewEncoder(w).Encode(map[string]string{
+				"status": "error",
+				"detail": "Cannot reach MITM proxy on port 9393. Is the proxy running?",
+			})
+			return
+		}
+		var initResp struct {
+			SessionID string `json:"session_id"`
+			ServerID  string `json:"server_id"`
+		}
+		json.NewDecoder(resp1.Body).Decode(&initResp)
+		resp1.Body.Close()
+
+		claimedServerID := initResp.ServerID
+
+		ttpCert, _ := x509.ParseCertificate(userNode.TTPCaCert)
+		ttpPubKey := ttpCert.PublicKey.(*rsa.PublicKey)
+		encryptedID, _ := crypto.EncryptRSA(ttpPubKey, []byte(userNode.ID))
+
+		authReq := AuthUserRequest{
+			SessionID:             initResp.SessionID,
+			EncryptedUserIDBase64: base64.StdEncoding.EncodeToString(encryptedID),
+			CertificatePEM:        userNode.CertPEM,
+		}
+		authReqBytes, _ := json.Marshal(authReq)
+		resp2, err := http.Post(ttpAddress+"/auth-user", "application/json", bytes.NewBuffer(authReqBytes))
+		if err != nil || resp2.StatusCode != http.StatusOK {
+			json.NewEncoder(w).Encode(map[string]string{
+				"status": "error",
+				"detail": "TTP auth failed during MITM test",
+			})
+			return
+		}
+
+		var authResp AuthUserResponse
+		json.NewDecoder(resp2.Body).Decode(&authResp)
+		resp2.Body.Close()
+
+		encryptedPayload, _ := base64.StdEncoding.DecodeString(authResp.EncryptedPayloadForUser)
+		decryptedPayloadBytes, err := crypto.DecryptRSA(userNode.PrivateKey, encryptedPayload)
+		if err != nil {
+			json.NewEncoder(w).Encode(map[string]string{
+				"status": "error",
+				"detail": "Failed to decrypt TTP payload in MITM test",
+			})
+			return
+		}
+
+		var ttpPayload map[string]string
+		if err := json.Unmarshal(decryptedPayloadBytes, &ttpPayload); err != nil {
+			json.NewEncoder(w).Encode(map[string]string{
+				"status": "error",
+				"detail": "Malformed TTP payload in MITM test",
+			})
+			return
+		}
+
+		if ttpPayload["server_id"] != claimedServerID {
+			log.Log("USER", "MITM TEST: Attack correctly detected and blocked!")
+			json.NewEncoder(w).Encode(map[string]string{
+				"status":            "attack_blocked",
+				"detail":            fmt.Sprintf("MITM wykryty i zablokowany! TTP potwierdza prawdziwy serwer, a proxy próbowało podszyć się jako '%s'", claimedServerID[:16]+"..."),
+				"ttp_server_id":     ttpPayload["server_id"][:16] + "...",
+				"claimed_server_id": claimedServerID[:16] + "...",
+			})
+			return
+		}
+
+		log.Log("USER", "MITM TEST WARNING: Attack NOT detected - system may be vulnerable!")
+		json.NewEncoder(w).Encode(map[string]string{
+			"status": "vulnerable",
+			"detail": "UWAGA: MITM nie został wykryty – system może być podatny na atak!",
+		})
+	})
+
+	// UI API for simulating forged certificate attack
+	mux.HandleFunc("/api/test-forged-cert", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		if userNode.TTPCaCert == nil || userNode.CertPEM == "" {
+			json.NewEncoder(w).Encode(map[string]string{
+				"status": "error", "detail": "User not registered at TTP. Register first.",
+			})
+			return
+		}
+
+		resp1, err := http.Post(serverAddress+"/request-file-list", "application/json", nil)
+		if err != nil {
+			json.NewEncoder(w).Encode(map[string]string{
+				"status": "error", "detail": "Cannot reach server",
+			})
+			return
+		}
+		var initResp struct {
+			SessionID string `json:"session_id"`
+			ServerID  string `json:"server_id"`
+		}
+		json.NewDecoder(resp1.Body).Decode(&initResp)
+		resp1.Body.Close()
+
+		ttpCert, _ := x509.ParseCertificate(userNode.TTPCaCert)
+		ttpPubKey := ttpCert.PublicKey.(*rsa.PublicKey)
+		encryptedID, _ := crypto.EncryptRSA(ttpPubKey, []byte(userNode.ID))
+
+		forgedKey, _ := crypto.GenerateRSAKeys()
+		forgedCertBytes, _ := crypto.GenerateRootCA(forgedKey, "FAKE_EVIL_USER")
+		forgedCertPEM := crypto.CertToPEM(forgedCertBytes)
+
+		authReq := AuthUserRequest{
+			SessionID:             initResp.SessionID,
+			EncryptedUserIDBase64: base64.StdEncoding.EncodeToString(encryptedID),
+			CertificatePEM:        forgedCertPEM,
+		}
+		authReqBytes, _ := json.Marshal(authReq)
+		resp2, err := http.Post(ttpAddress+"/auth-user", "application/json", bytes.NewBuffer(authReqBytes))
+		if err != nil {
+			json.NewEncoder(w).Encode(map[string]string{
+				"status": "error", "detail": "TTP unreachable",
+			})
+			return
+		}
+
+		if resp2.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp2.Body)
+			resp2.Body.Close()
+			log.Log("USER", "FORGED CERT TEST: Attack correctly blocked by TTP!")
+			json.NewEncoder(w).Encode(map[string]string{
+				"status":  "attack_blocked",
+				"detail":  fmt.Sprintf("TTP odrzucił fałszywy certyfikat: %s", string(body)),
+			})
+			return
+		}
+		resp2.Body.Close()
+
+		log.Log("USER", "FORGED CERT TEST WARNING: TTP accepted forged certificate!")
+		json.NewEncoder(w).Encode(map[string]string{
+			"status": "vulnerable",
+			"detail": "UWAGA: TTP zaakceptował fałszywy certyfikat!",
+		})
+	})
+
 	// UI API for initalizing safe download
 	mux.HandleFunc("/api/download", func(w http.ResponseWriter, r *http.Request) {
 		targetFilename := r.URL.Query().Get("file")
@@ -177,6 +335,7 @@ func setupRouter(userNode *node.Node, log *logger.EventLogger, ttpAddress, serve
 		authReq := AuthUserRequest{
 			SessionID:             initResp.SessionID,
 			EncryptedUserIDBase64: base64.StdEncoding.EncodeToString(encryptedID),
+			CertificatePEM:        userNode.CertPEM,
 		}
 		authReqBytes, _ := json.Marshal(authReq)
 		resp2, _ := http.Post(ttpAddress+"/auth-user", "application/json", bytes.NewBuffer(authReqBytes))
