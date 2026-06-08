@@ -10,6 +10,7 @@ services:
       - TTP_ADDRESS=http://ttp:8181
     volumes:
       - ./shared_files:/app/shared_files
+      - ./logs/server:/app/logs
     networks:
       - shared-net
 

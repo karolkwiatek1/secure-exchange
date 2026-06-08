@@ -59,7 +59,7 @@ func TestTTPRegistrationFlow(t *testing.T) {
 
 	// 6. Verify logging output
 	logOutput := buf.String()
-	if !bytes.Contains([]byte(logOutput), []byte("Successfully registered entity")) {
+	if !bytes.Contains([]byte(logOutput), []byte("[REGISTER] Registration completed")) {
 		t.Error("Expected success log entry missing")
 	}
 }

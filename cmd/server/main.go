@@ -37,32 +37,33 @@ func setupRouter(node *node.Node, log *logger.EventLogger) *http.ServeMux {
 
 	// User asks for resource
 	mux.HandleFunc("/request-file", func(w http.ResponseWriter, r *http.Request) {
-		log.Log("HTTP_SERVER", "Received initial file request from User: "+r.RemoteAddr)
+		log.Log("SERVER", fmt.Sprintf(">>> /request-file from %s", r.RemoteAddr))
 
-		// Server asks TTP for a new session
 		sessionID, err := node.InitSession()
 		if err != nil {
+			log.Log("SERVER", fmt.Sprintf("ERROR: Failed to init session: %v", err))
 			http.Error(w, "Failed to initialize session with TTP", http.StatusInternalServerError)
 			return
 		}
 
-		// Server returns SessionID to the User
 		response := InitResponse{
 			SessionID: sessionID,
 			ServerID:  node.ID,
 			Message:   "Session initialzied. Please authenticate at TTP with this SessionID",
 		}
 
+		log.Log("SERVER", fmt.Sprintf("<<< Returning session %s..., server_id=%s...", sessionID[:8], node.ID[:8]))
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response)
 	})
 
 	// User asks for file list
 	mux.HandleFunc("/request-file-list", func(w http.ResponseWriter, r *http.Request) {
-		log.Log("HTTP_SERVER", "Received file list request from User: "+r.RemoteAddr)
+		log.Log("SERVER", fmt.Sprintf(">>> /request-file-list from %s", r.RemoteAddr))
 
 		sessionID, err := node.InitSession()
 		if err != nil {
+			log.Log("SERVER", fmt.Sprintf("ERROR: Failed to init session: %v", err))
 			http.Error(w, "Failed to initialize session with TTP", http.StatusInternalServerError)
 			return
 		}
@@ -73,6 +74,7 @@ func setupRouter(node *node.Node, log *logger.EventLogger) *http.ServeMux {
 			Message:   "Session initialized for file listing. Please authenticate at TTP.",
 		}
 
+		log.Log("SERVER", fmt.Sprintf("<<< Returning session %s..., server_id=%s...", sessionID[:8], node.ID[:8]))
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response)
 	})
@@ -85,38 +87,41 @@ func setupRouter(node *node.Node, log *logger.EventLogger) *http.ServeMux {
 			return
 		}
 
-		log.Log("HTTP_SERVER", "User returned to download file using Session: "+req.SessionID[:8]+"...")
+		log.Log("SERVER", fmt.Sprintf(">>> /download-file file=%s session=%s...", req.Filename, req.SessionID[:8]))
 
-		// Server tries to fetch AES key from TTP
+		log.Log("SERVER", "[DOWNLOAD] Step 1/4: Fetching AES session key from TTP...")
 		aesKey, err := node.FetchSessionKey(req.SessionID)
 		if err != nil {
-			log.Log("HTTP_SERVER", "Download rejected: User not authenticated at TTP")
+			log.Log("SERVER", fmt.Sprintf("[DOWNLOAD] REJECTED: %v", err))
 			http.Error(w, "Unauthorized or session invalid", http.StatusForbidden)
 			return
 		}
 
 		safeFilename := filepath.Base(req.Filename)
+		log.Log("SERVER", fmt.Sprintf("[DOWNLOAD] Step 2/4: Reading file from disk: shared_files/%s", safeFilename))
 		filePath := filepath.Join(".", "shared_files", safeFilename)
 
 		fileContent, err := os.ReadFile(filePath)
 		if err != nil {
-			log.Log("HTTP_SERVER", "File not found: "+safeFilename)
+			log.Log("SERVER", fmt.Sprintf("[DOWNLOAD] ERROR: file not found: %s", safeFilename))
 			http.Error(w, "File not found", http.StatusNotFound)
 			return
 		}
+		log.Log("SERVER", fmt.Sprintf("[DOWNLOAD] File read: %d bytes", len(fileContent)))
 
-		log.Log("HTTP_SERVER", "Encrypting file data with AES-256-GCM...")
+		log.Log("SERVER", "[DOWNLOAD] Step 3/4: Encrypting file with AES-256-GCM...")
 		encryptedData, err := crypto.EncryptAES_GCM(aesKey, fileContent)
 		if err != nil {
 			http.Error(w, "Encryption failed", http.StatusInternalServerError)
 			return
 		}
+		log.Log("SERVER", fmt.Sprintf("[DOWNLOAD] Encrypted: %d -> %d bytes (AES-256-GCM)", len(fileContent), len(encryptedData)))
 
 		response := DownloadResponse{
 			EncryptedDataBase64: base64.StdEncoding.EncodeToString(encryptedData),
 		}
 
-		log.Log("HTTP_SERVER", "Sending encrypted data to User")
+		log.Log("SERVER", fmt.Sprintf("[DOWNLOAD] Step 4/4: Sending encrypted data (%d bytes base64)", len(response.EncryptedDataBase64)))
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response)
 	})
@@ -131,15 +136,17 @@ func setupRouter(node *node.Node, log *logger.EventLogger) *http.ServeMux {
 			return
 		}
 
-		log.Log("HTTP_SERVER", "User requested encrypted file list using Session: "+req.SessionID[:8]+"...")
+		log.Log("SERVER", fmt.Sprintf(">>> /list-files-encrypted session=%s...", req.SessionID[:8]))
 
+		log.Log("SERVER", "[LIST] Step 1/3: Fetching AES session key from TTP...")
 		aesKey, err := node.FetchSessionKey(req.SessionID)
 		if err != nil {
-			log.Log("HTTP_SERVER", "File list request rejected: User not authenticated at TTP")
+			log.Log("SERVER", fmt.Sprintf("[LIST] REJECTED: %v", err))
 			http.Error(w, "Unauthorized or session invalid", http.StatusForbidden)
 			return
 		}
 
+		log.Log("SERVER", "[LIST] Step 2/3: Reading shared_files/ directory...")
 		files, err := os.ReadDir("./shared_files")
 		if err != nil {
 			http.Error(w, "Unable to read directory", http.StatusInternalServerError)
@@ -152,21 +159,22 @@ func setupRouter(node *node.Node, log *logger.EventLogger) *http.ServeMux {
 				fileNames = append(fileNames, file.Name())
 			}
 		}
+		log.Log("SERVER", fmt.Sprintf("[LIST] Found %d files: %v", len(fileNames), fileNames))
 
 		fileListJSON, _ := json.Marshal(fileNames)
 
-		log.Log("HTTP_SERVER", "Encrypting file list with AES-256-GCM...")
+		log.Log("SERVER", "[LIST] Step 3/3: Encrypting file list with AES-256-GCM...")
 		encryptedData, err := crypto.EncryptAES_GCM(aesKey, fileListJSON)
 		if err != nil {
 			http.Error(w, "Encryption failed", http.StatusInternalServerError)
 			return
 		}
+		log.Log("SERVER", fmt.Sprintf("[LIST] Encrypted: %d -> %d bytes, sending to User", len(fileListJSON), len(encryptedData)))
 
 		response := DownloadResponse{
 			EncryptedDataBase64: base64.StdEncoding.EncodeToString(encryptedData),
 		}
 
-		log.Log("HTTP_SERVER", "Sending encrypted file list to User")
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response)
 	})
@@ -176,6 +184,11 @@ func setupRouter(node *node.Node, log *logger.EventLogger) *http.ServeMux {
 
 func main() {
 	log := logger.New(os.Stdout)
+	if err := log.EnableFileLogging("logs/server.log"); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not enable file logging: %v\n", err)
+	}
+	defer log.Close()
+
 	log.Log("SYSTEM", "Booting up File Server Node...")
 
 	ttpAddress := os.Getenv("TTP_ADDRESS")

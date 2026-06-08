@@ -3,16 +3,12 @@
 *.dll
 *.so
 *.dylib
-
 *.test
-
 *.out
 *.prof
 coverage.txt
-
 .vscode/
-
 .DS_Store
 Thumbs.db
-
 downloads/
+logs/

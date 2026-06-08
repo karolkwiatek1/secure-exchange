@@ -40,14 +40,15 @@ type Node struct {
 
 // NewNode initializes a new node with generated RSA keys.
 func NewNode(name string, nodeType NodeType, ttpAddress string, log *logger.EventLogger) (*Node, error) {
+	log.Log(string(nodeType), "[INIT] Generating RSA-4096 key pair...")
 	privKey, err := crypto.GenerateRSAKeys()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate node keys: %v", err)
 	}
+	log.Log(string(nodeType), "[INIT] RSA-4096 key pair generated successfully")
 
 	nodeID := crypto.GenerateID(name)
-
-	log.Log(string(nodeType), fmt.Sprintf("Initialized node '%s' with ID: %s", name, nodeID[:8]+"..."))
+	log.Log(string(nodeType), fmt.Sprintf("[INIT] Node '%s' SHA-256 ID: %s", name, nodeID[:8]+"..."))
 
 	return &Node{
 		ID:         nodeID,
@@ -63,11 +64,10 @@ func NewNode(name string, nodeType NodeType, ttpAddress string, log *logger.Even
 func (n *Node) RegisterAtTTP() error {
 	prefix := string(n.Type)
 
-	n.Log.Log(prefix, "Initiating registration at TTP....")
+	n.Log.Log(prefix, "========================================")
+	n.Log.Log(prefix, "[REGISTER] Step 1/5: Fetching TTP Root CA certificate...")
+	n.Log.Log(prefix, fmt.Sprintf("[REGISTER] GET %s/ca", n.TTPAddress))
 
-	n.Log.Log(prefix, "\tFetching TTP Root CA certificate...")
-
-	// Obtain Root CA from TTP
 	caResp, err := http.Get(fmt.Sprintf("%s/ca", n.TTPAddress))
 	if err != nil {
 		return fmt.Errorf("failed to contact TTP for CA certificate: %v", err)
@@ -86,6 +86,7 @@ func (n *Node) RegisterAtTTP() error {
 		return err
 	}
 	n.TTPCaCert = caCertBytes
+	n.Log.Log(prefix, "[REGISTER] Root CA certificate received and stored")
 
 	caCert, err := x509.ParseCertificate(caCertBytes)
 	if err != nil {
@@ -96,37 +97,34 @@ func (n *Node) RegisterAtTTP() error {
 	if !ok {
 		return errors.New("TTP public key is not RSA")
 	}
+	n.Log.Log(prefix, fmt.Sprintf("[REGISTER] TTP CA identity verified: CN=%s", caCert.Subject.CommonName))
 
-	// Encrypting node's own ID with TTP's public key
-	n.Log.Log(prefix, "\tencrypting Node ID using TTP's Public Key...")
-
+	n.Log.Log(prefix, fmt.Sprintf("[REGISTER] Step 2/5: Encrypting node ID '%s...' with TTP's RSA public key (OAEP/SHA-256)...", n.ID[:8]))
 	encryptedID, err := crypto.EncryptRSA(ttpPubKey, []byte(n.ID))
 	if err != nil {
 		return fmt.Errorf("failed to encrypt ID: %v", err)
 	}
 	encryptedIDBase64 := base64.StdEncoding.EncodeToString(encryptedID)
+	n.Log.Log(prefix, fmt.Sprintf("[REGISTER] ID encrypted (%d bytes -> %d bytes base64)", len(encryptedID), len(encryptedIDBase64)))
 
-	// Preparing own public key
+	n.Log.Log(prefix, "[REGISTER] Step 3/5: Encoding public key in PEM format...")
 	pubKeyPEM, err := crypto.PublicKeyToPEM(n.PublicKey)
 	if err != nil {
 		return err
 	}
+	n.Log.Log(prefix, fmt.Sprintf("[REGISTER] Public key PEM: %d bytes", len(pubKeyPEM)))
 
-	// Constructing payload
+	n.Log.Log(prefix, "[REGISTER] Step 4/5: Sending registration payload to TTP...")
 	payload := map[string]string{
 		"encrypted_id_base64": encryptedIDBase64,
 		"public_key_pem":      pubKeyPEM,
 	}
-
 	jsonData, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}
 
-	// Send HTTP Post request to TTP
-
-	n.Log.Log(prefix, "\tSending registration payload to TTP...")
-
+	n.Log.Log(prefix, fmt.Sprintf("[REGISTER] POST %s/register (%d bytes)", n.TTPAddress, len(jsonData)))
 	registerURL := fmt.Sprintf("%s/register", n.TTPAddress)
 	resp, err := http.Post(registerURL, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
@@ -139,11 +137,10 @@ func (n *Node) RegisterAtTTP() error {
 		return fmt.Errorf("TTP rejected registration: %s", string(bodyBytes))
 	}
 
-	// Decode the response containg the certificate
+	n.Log.Log(prefix, "[REGISTER] Step 5/5: Decoding X.509 certificate from TTP response...")
 	var response struct {
 		CertificatePEM string `json:"certificate_pem"`
 	}
-
 	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
 		return fmt.Errorf("failed to decode TTP response: %v", err)
 	}
@@ -153,7 +150,9 @@ func (n *Node) RegisterAtTTP() error {
 	}
 
 	n.CertPEM = response.CertificatePEM
-	n.Log.Log(string(n.Type), "Successfully obtained X.509 Certificate from TTP")
+	n.Log.Log(prefix, fmt.Sprintf("[REGISTER] X.509 certificate obtained (%d bytes PEM)", len(response.CertificatePEM)))
+	n.Log.Log(prefix, "[REGISTER] Registration completed successfully!")
+	n.Log.Log(prefix, "========================================")
 
 	return nil
 }
@@ -161,7 +160,8 @@ func (n *Node) RegisterAtTTP() error {
 // InitSession contacts the TTP to initialize new session
 func (n *Node) InitSession() (string, error) {
 	prefix := string(n.Type)
-	n.Log.Log(prefix, "Requesting new session from TTP...")
+	n.Log.Log(prefix, "[SESSION] Step 1/2: Requesting new session from TTP...")
+	n.Log.Log(prefix, fmt.Sprintf("[SESSION] Sending server_id=%s... + certificate PEM (%d bytes)", n.ID[:8]+"...", len(n.CertPEM)))
 
 	payload := map[string]string{
 		"server_id":       n.ID,
@@ -172,6 +172,7 @@ func (n *Node) InitSession() (string, error) {
 		return "", err
 	}
 
+	n.Log.Log(prefix, fmt.Sprintf("[SESSION] POST %s/auth-server (%d bytes)", n.TTPAddress, len(jsonData)))
 	resp, err := http.Post(fmt.Sprintf("%s/auth-server", n.TTPAddress), "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return "", fmt.Errorf("network error communicating with TTP: %v", err)
@@ -183,20 +184,21 @@ func (n *Node) InitSession() (string, error) {
 		return "", fmt.Errorf("TTP rejected session request: %s", string(bodyBytes))
 	}
 
+	n.Log.Log(prefix, "[SESSION] Step 2/2: Decoding session ID from TTP response...")
 	var result struct {
 		SessionID string `json:"session_id"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return "", err
 	}
-	n.Log.Log(prefix, "Session initialized successfully. SessionID: "+result.SessionID[:8]+"...")
+	n.Log.Log(prefix, fmt.Sprintf("[SESSION] Session established. SessionID: %s...", result.SessionID[:8]))
 	return result.SessionID, nil
 }
 
 // FetchSessionKey fetches encrypted AES key from the TTP, and decrypts it
 func (n *Node) FetchSessionKey(sessionID string) ([]byte, error) {
 	prefix := string(n.Type)
-	n.Log.Log(prefix, "Fetching AES session key from TTP for session: "+sessionID[:8]+"...")
+	n.Log.Log(prefix, fmt.Sprintf("[FETCH-KEY] Step 1/3: Requesting AES key for session %s...", sessionID[:8]+"..."))
 
 	payload := map[string]string{
 		"session_id": sessionID,
@@ -207,6 +209,7 @@ func (n *Node) FetchSessionKey(sessionID string) ([]byte, error) {
 		return nil, err
 	}
 
+	n.Log.Log(prefix, fmt.Sprintf("[FETCH-KEY] POST %s/fetch-key (%d bytes)", n.TTPAddress, len(jsonData)))
 	resp, err := http.Post(fmt.Sprintf("%s/fetch-key", n.TTPAddress), "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, err
@@ -217,6 +220,7 @@ func (n *Node) FetchSessionKey(sessionID string) ([]byte, error) {
 		return nil, errors.New("TTP rejected key fetch (User might not be authenticated yet)")
 	}
 
+	n.Log.Log(prefix, "[FETCH-KEY] Step 2/3: Decoding encrypted AES key from response...")
 	var result struct {
 		EncryptedAESBase64 string `json:"encrypted_aes_for_server_base64"`
 	}
@@ -228,13 +232,14 @@ func (n *Node) FetchSessionKey(sessionID string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	n.Log.Log(prefix, fmt.Sprintf("[FETCH-KEY] Encrypted AES key: %d bytes (base64: %d bytes)", len(encryptedAES), len(result.EncryptedAESBase64)))
 
-	// Decrypting AES key with server's own private key
+	n.Log.Log(prefix, "[FETCH-KEY] Step 3/3: Decrypting AES key with own RSA private key (OAEP/SHA-256)...")
 	aesKey, err := crypto.DecryptRSA(n.PrivateKey, encryptedAES)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decrypt AES key: %v", err)
 	}
 
-	n.Log.Log(prefix, "Successfully fetched and decrypted AES session key")
+	n.Log.Log(prefix, fmt.Sprintf("[FETCH-KEY] AES-256 session key obtained (%d bytes)", len(aesKey)))
 	return aesKey, nil
 }

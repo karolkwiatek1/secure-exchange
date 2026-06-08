@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 
 	"github.com/karolkwiatek1/secure-exchange/crypto"
 	"github.com/karolkwiatek1/secure-exchange/logger"
@@ -80,7 +81,9 @@ func setupRouter(service *ttp.Service, log *logger.EventLogger) *http.ServeMux {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(response)
 
-		log.Log("HTTP_SERVER", fmt.Sprintf("Server Root CA certificate to %s", r.RemoteAddr))
+		if !strings.Contains(r.Header.Get("User-Agent"), "Wget") {
+			log.Log("HTTP_SERVER", fmt.Sprintf("Server Root CA certificate to %s", r.RemoteAddr))
+		}
 	})
 
 	// Endpoint: Register User/Server
@@ -172,6 +175,11 @@ func setupRouter(service *ttp.Service, log *logger.EventLogger) *http.ServeMux {
 
 func main() {
 	log := logger.New(os.Stdout)
+	if err := log.EnableFileLogging("logs/ttp.log"); err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not enable file logging: %v\n", err)
+	}
+	defer log.Close()
+
 	log.Log("SYSTEM", "Booting up TTP node...")
 
 	service, err := ttp.NewService(log)

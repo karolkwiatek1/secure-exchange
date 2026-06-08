@@ -36,6 +36,12 @@ func setupRouter(userNode *node.Node, log *logger.EventLogger, ttpAddress, serve
 	// Serving html/css/js files from './static' folder
 	mux.Handle("/", http.FileServer(http.Dir("./static")))
 
+	// UI log stream
+	mux.HandleFunc("/api/logs", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(log.GetBuffer())
+	})
+
 	// UI API for registering at TTP
 	mux.HandleFunc("/api/register", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -61,9 +67,12 @@ func setupRouter(userNode *node.Node, log *logger.EventLogger, ttpAddress, serve
 
 	// UI API for getting list of files from the server (encrypted flow)
 	mux.HandleFunc("/api/files", func(w http.ResponseWriter, r *http.Request) {
-		// Step 1: Request file-list session from Server
+		log.Log("USER", "========================================")
+		log.Log("USER", "[FILES] Step 1/4: Requesting file-list session from Server...")
+		log.Log("USER", fmt.Sprintf("[FILES] POST %s/request-file-list", serverAddress))
 		resp1, err := http.Post(serverAddress+"/request-file-list", "application/json", nil)
 		if err != nil {
+			log.Log("USER", fmt.Sprintf("[FILES] ERROR: %v", err))
 			http.Error(w, "Cannot reach file server", http.StatusBadGateway)
 			return
 		}
@@ -73,10 +82,12 @@ func setupRouter(userNode *node.Node, log *logger.EventLogger, ttpAddress, serve
 		}
 		json.NewDecoder(resp1.Body).Decode(&initResp)
 		resp1.Body.Close()
+		log.Log("USER", fmt.Sprintf("[FILES] Server responded: session=%s... server_id=%s...", initResp.SessionID[:8], initResp.ServerID[:8]))
 
 		claimedServerID := initResp.ServerID
 
-		// Step 2: Authenticate at TTP and obtain AES key
+		log.Log("USER", "[FILES] Step 2/4: Authenticating at TTP...")
+		log.Log("USER", fmt.Sprintf("[FILES] Encrypting user ID '%s...' with TTP public key (RSA-OAEP)...", userNode.ID[:8]))
 		ttpCert, _ := x509.ParseCertificate(userNode.TTPCaCert)
 		ttpPubKey := ttpCert.PublicKey.(*rsa.PublicKey)
 		encryptedID, _ := crypto.EncryptRSA(ttpPubKey, []byte(userNode.ID))
@@ -87,9 +98,11 @@ func setupRouter(userNode *node.Node, log *logger.EventLogger, ttpAddress, serve
 			CertificatePEM:        userNode.CertPEM,
 		}
 		authReqBytes, _ := json.Marshal(authReq)
+		log.Log("USER", fmt.Sprintf("[FILES] POST %s/auth-user (%d bytes payload)", ttpAddress, len(authReqBytes)))
 		resp2, _ := http.Post(ttpAddress+"/auth-user", "application/json", bytes.NewBuffer(authReqBytes))
 
 		if resp2.StatusCode != http.StatusOK {
+			log.Log("USER", fmt.Sprintf("[FILES] TTP auth FAILED (HTTP %d)", resp2.StatusCode))
 			http.Error(w, "TTP Authentication Failed", http.StatusForbidden)
 			return
 		}
@@ -98,9 +111,11 @@ func setupRouter(userNode *node.Node, log *logger.EventLogger, ttpAddress, serve
 		json.NewDecoder(resp2.Body).Decode(&authResp)
 		resp2.Body.Close()
 
+		log.Log("USER", "[FILES] Step 3/4: Decrypting TTP payload with own private key (RSA-OAEP)...")
 		encryptedPayload, _ := base64.StdEncoding.DecodeString(authResp.EncryptedPayloadForUser)
 		decryptedPayloadBytes, err := crypto.DecryptRSA(userNode.PrivateKey, encryptedPayload)
 		if err != nil {
+			log.Log("USER", "[FILES] ERROR: Failed to decrypt TTP payload")
 			http.Error(w, "Failed to decrypt TTP payload", http.StatusForbidden)
 			return
 		}
@@ -111,7 +126,7 @@ func setupRouter(userNode *node.Node, log *logger.EventLogger, ttpAddress, serve
 			return
 		}
 
-		// Verify server identity
+		log.Log("USER", fmt.Sprintf("[FILES] MITM CHECK: TTP confirmed server_id=%s... vs claimed=%s...", ttpPayload["server_id"][:8], claimedServerID[:8]))
 		if ttpPayload["server_id"] != claimedServerID {
 			log.Log("FATAL", "SECURITY ALERT: Session belongs to untrusted Server! MITM detected.")
 			http.Error(w, "TTP reported invalid Server Identity. Connection aborted.", http.StatusForbidden)
@@ -119,10 +134,9 @@ func setupRouter(userNode *node.Node, log *logger.EventLogger, ttpAddress, serve
 		}
 
 		aesKey, _ := base64.StdEncoding.DecodeString(ttpPayload["aes_key"])
+		log.Log("USER", fmt.Sprintf("[FILES] AES-256 key obtained (%d bytes). Server identity verified.", len(aesKey)))
 
-		log.Log("USER", "TTP confirmed Server identity cryptographically.")
-
-		// Step 3: Request encrypted file list from Server
+		log.Log("USER", "[FILES] Step 4/4: Requesting encrypted file list from Server...")
 		dlReqBody, _ := json.Marshal(map[string]string{"session_id": initResp.SessionID})
 		resp3, err := http.Post(serverAddress+"/list-files-encrypted", "application/json", bytes.NewBuffer(dlReqBody))
 		if err != nil {
@@ -137,11 +151,15 @@ func setupRouter(userNode *node.Node, log *logger.EventLogger, ttpAddress, serve
 		resp3.Body.Close()
 
 		encryptedData, _ := base64.StdEncoding.DecodeString(listResp.EncryptedDataBase64)
+		log.Log("USER", fmt.Sprintf("[FILES] Decrypting file list with AES-256-GCM (%d bytes)...", len(encryptedData)))
 		plaintext, err := crypto.DecryptAES_GCM(aesKey, encryptedData)
 		if err != nil {
+			log.Log("USER", "[FILES] ERROR: Data corrupted or MITM attack!")
 			http.Error(w, "Data corrupted or MITM attack!", http.StatusInternalServerError)
 			return
 		}
+		log.Log("USER", fmt.Sprintf("[FILES] File list decrypted successfully: %s", string(plaintext)))
+		log.Log("USER", "========================================")
 
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(plaintext)
@@ -219,7 +237,7 @@ func setupRouter(userNode *node.Node, log *logger.EventLogger, ttpAddress, serve
 			log.Log("USER", "MITM TEST: Attack correctly detected and blocked!")
 			json.NewEncoder(w).Encode(map[string]string{
 				"status":            "attack_blocked",
-				"detail":            fmt.Sprintf("MITM wykryty i zablokowany! TTP potwierdza prawdziwy serwer, a proxy próbowało podszyć się jako '%s'", claimedServerID[:16]+"..."),
+				"detail":            fmt.Sprintf("MITM detected and blocked! TTP confirms real server, proxy tried to impersonate '%s'", claimedServerID[:16]+"..."),
 				"ttp_server_id":     ttpPayload["server_id"][:16] + "...",
 				"claimed_server_id": claimedServerID[:16] + "...",
 			})
@@ -229,7 +247,7 @@ func setupRouter(userNode *node.Node, log *logger.EventLogger, ttpAddress, serve
 		log.Log("USER", "MITM TEST WARNING: Attack NOT detected - system may be vulnerable!")
 		json.NewEncoder(w).Encode(map[string]string{
 			"status": "vulnerable",
-			"detail": "UWAGA: MITM nie został wykryty – system może być podatny na atak!",
+			"detail": "WARNING: MITM not detected — system may be vulnerable!",
 		})
 	})
 
@@ -289,7 +307,7 @@ func setupRouter(userNode *node.Node, log *logger.EventLogger, ttpAddress, serve
 			log.Log("USER", "FORGED CERT TEST: Attack correctly blocked by TTP!")
 			json.NewEncoder(w).Encode(map[string]string{
 				"status":  "attack_blocked",
-				"detail":  fmt.Sprintf("TTP odrzucił fałszywy certyfikat: %s", string(body)),
+				"detail":  fmt.Sprintf("TTP rejected forged certificate: %s", string(body)),
 			})
 			return
 		}
@@ -298,7 +316,7 @@ func setupRouter(userNode *node.Node, log *logger.EventLogger, ttpAddress, serve
 		log.Log("USER", "FORGED CERT TEST WARNING: TTP accepted forged certificate!")
 		json.NewEncoder(w).Encode(map[string]string{
 			"status": "vulnerable",
-			"detail": "UWAGA: TTP zaakceptował fałszywy certyfikat!",
+			"detail": "WARNING: TTP accepted a forged certificate!",
 		})
 	})
 
@@ -310,7 +328,11 @@ func setupRouter(userNode *node.Node, log *logger.EventLogger, ttpAddress, serve
 			return
 		}
 
-		// Initializing session with a server
+		log.Log("USER", "========================================")
+		log.Log("USER", fmt.Sprintf("[DOWNLOAD] Requesting file: %s", targetFilename))
+
+		log.Log("USER", "[DOWNLOAD] Step 1/5: Initializing session with Server...")
+		log.Log("USER", fmt.Sprintf("[DOWNLOAD] POST %s/request-file {filename:%s}", serverAddress, targetFilename))
 		reqBody, _ := json.Marshal(map[string]string{"filename": targetFilename})
 		resp1, err := http.Post(serverAddress+"/request-file", "application/json", bytes.NewBuffer(reqBody))
 		if err != nil {
@@ -323,11 +345,11 @@ func setupRouter(userNode *node.Node, log *logger.EventLogger, ttpAddress, serve
 		}
 		json.NewDecoder(resp1.Body).Decode(&initResp)
 		resp1.Body.Close()
+		log.Log("USER", fmt.Sprintf("[DOWNLOAD] Server responded: session=%s... server_id=%s...", initResp.SessionID[:8], initResp.ServerID[:8]))
 
-		// Store server claimed identity
 		claimedServerID := initResp.ServerID
 
-		// Authentication at TTP and obtaining AES key
+		log.Log("USER", "[DOWNLOAD] Step 2/5: Authenticating at TTP...")
 		ttpCert, _ := x509.ParseCertificate(userNode.TTPCaCert)
 		ttpPubKey := ttpCert.PublicKey.(*rsa.PublicKey)
 		encryptedID, _ := crypto.EncryptRSA(ttpPubKey, []byte(userNode.ID))
@@ -341,6 +363,7 @@ func setupRouter(userNode *node.Node, log *logger.EventLogger, ttpAddress, serve
 		resp2, _ := http.Post(ttpAddress+"/auth-user", "application/json", bytes.NewBuffer(authReqBytes))
 
 		if resp2.StatusCode != http.StatusOK {
+			log.Log("USER", fmt.Sprintf("[DOWNLOAD] TTP auth FAILED (HTTP %d)", resp2.StatusCode))
 			http.Error(w, "TTP Authentication Failed", http.StatusForbidden)
 			return
 		}
@@ -349,6 +372,7 @@ func setupRouter(userNode *node.Node, log *logger.EventLogger, ttpAddress, serve
 		json.NewDecoder(resp2.Body).Decode(&authResp)
 		resp2.Body.Close()
 
+		log.Log("USER", "[DOWNLOAD] Step 3/5: Decrypting TTP payload (RSA-OAEP)...")
 		encryptedPayload, _ := base64.StdEncoding.DecodeString(authResp.EncryptedPayloadForUser)
 		decryptedPayloadBytes, err := crypto.DecryptRSA(userNode.PrivateKey, encryptedPayload)
 		if err != nil {
@@ -362,7 +386,7 @@ func setupRouter(userNode *node.Node, log *logger.EventLogger, ttpAddress, serve
 			return
 		}
 
-		// Check if ServerID returned by TTP is the same as one returned by server
+		log.Log("USER", fmt.Sprintf("[DOWNLOAD] MITM CHECK: TTP server_id=%s... vs claimed=%s...", ttpPayload["server_id"][:8], claimedServerID[:8]))
 		if ttpPayload["server_id"] != claimedServerID {
 			log.Log("FATAL", "SECURITY ALERT: Session belongs to untrusted Server! MITM detected.")
 			http.Error(w, "TTP reported invalid Server Identity. Connection aborted.", http.StatusForbidden)
@@ -370,10 +394,9 @@ func setupRouter(userNode *node.Node, log *logger.EventLogger, ttpAddress, serve
 		}
 
 		aesKey, _ := base64.StdEncoding.DecodeString(ttpPayload["aes_key"])
+		log.Log("USER", fmt.Sprintf("[DOWNLOAD] AES-256 key obtained (%d bytes). Server identity verified.", len(aesKey)))
 
-		log.Log("USER", "TTP confirmed Server identity cryptographically.")
-
-		// Downloading encrypted file
+		log.Log("USER", "[DOWNLOAD] Step 4/5: Downloading encrypted file from Server...")
 		dlReqBody, _ := json.Marshal(map[string]string{
 			"session_id": initResp.SessionID,
 			"filename":   targetFilename,
@@ -386,8 +409,9 @@ func setupRouter(userNode *node.Node, log *logger.EventLogger, ttpAddress, serve
 		json.NewDecoder(resp3.Body).Decode(&dlResp)
 		resp3.Body.Close()
 
-		// Decrypting file and saving it disk
+		log.Log("USER", "[DOWNLOAD] Step 5/5: Decrypting file with AES-256-GCM...")
 		encryptedData, _ := base64.StdEncoding.DecodeString(dlResp.EncryptedDataBase64)
+		log.Log("USER", fmt.Sprintf("[DOWNLOAD] Encrypted data: %d bytes", len(encryptedData)))
 		plaintext, err := crypto.DecryptAES_GCM(aesKey, encryptedData)
 		if err != nil {
 			http.Error(w, "Data corrupted or MITM attack!", http.StatusInternalServerError)
@@ -396,10 +420,9 @@ func setupRouter(userNode *node.Node, log *logger.EventLogger, ttpAddress, serve
 
 		savePath := filepath.Join(".", "downloads", targetFilename)
 		os.WriteFile(savePath, plaintext, 0644)
+		log.Log("USER", fmt.Sprintf("[DOWNLOAD] File saved to %s (%d bytes)", savePath, len(plaintext)))
+		log.Log("USER", "========================================")
 
-		log.Log("USER", "FILE SECURELY SAVED TO: "+savePath)
-
-		// Zwracamy odpowiedź sukcesu do przeglądarki
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]string{"status": "success", "path": savePath})
 	})
@@ -409,6 +432,7 @@ func setupRouter(userNode *node.Node, log *logger.EventLogger, ttpAddress, serve
 
 func main() {
 	log := logger.New(os.Stdout)
+	log.EnableBuffer()
 	log.Log("SYSTEM", "Booting up User Web UI Node...")
 
 	ttpAddress := "http://localhost:8181"

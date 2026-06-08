@@ -20,6 +20,16 @@ docker compose -f docker-compose.server.yml --project-name server down 2>/dev/nu
 docker network rm secure-exchange-net 2>/dev/null || true
 
 docker compose -f docker-compose.ttp.yml --project-name ttp up -d
+
+echo "Waiting for TTP to be healthy..."
+for i in $(seq 1 30); do
+    if docker compose -f docker-compose.ttp.yml --project-name ttp ps | grep -q 'healthy'; then
+        echo "TTP is ready."
+        break
+    fi
+    sleep 1
+done
+
 docker compose -f docker-compose.server.yml --project-name server up -d
 
 (docker compose -f docker-compose.ttp.yml --project-name ttp logs -f --tail=10 2>&1 | sed 's/^/  [TTP]  /') &

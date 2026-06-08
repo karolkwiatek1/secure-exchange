@@ -6,8 +6,16 @@ services:
     command: ["/app/bin/ttp"]
     ports:
       - "8181:8181"
+    volumes:
+      - ./logs/ttp:/app/logs
     networks:
       - shared-net
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8181/ca"]
+      interval: 2s
+      timeout: 3s
+      retries: 10
+      start_period: 2s
 
 networks:
   shared-net:

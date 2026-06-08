@@ -77,6 +77,29 @@
             konsola.scrollTop = konsola.scrollHeight;
         }
 
+        let lastLogCount = 0;
+        setInterval(() => {
+            fetch('/api/logs')
+                .then(r => r.json())
+                .then(lines => {
+                    if (lines && lines.length > lastLogCount) {
+                        for (let i = lastLogCount; i < lines.length; i++) {
+                            const line = lines[i];
+                            const konsola = document.getElementById('konsola');
+                            const el = document.createElement('div');
+                            el.innerText = line;
+                            if (line.includes('FATAL') || line.includes('ERROR') || line.includes('REJECTED')) el.className = 'log-error';
+                            else if (line.includes('success') || line.includes('SUCCESS') || line.includes('confirmed') || line.includes('verified') || line.includes('completed')) el.className = 'log-success';
+                            else el.className = 'log-info';
+                            konsola.appendChild(el);
+                        }
+                        lastLogCount = lines.length;
+                        document.getElementById('konsola').scrollTop = document.getElementById('konsola').scrollHeight;
+                    }
+                })
+                .catch(() => {});
+        }, 500);
+
         function rejestrujWTTP() {
             const btn = document.getElementById('btnRejestruj');
             
