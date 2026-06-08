@@ -813,9 +813,23 @@
                   </li>
                 
                   <li>
+                    <a href="#EventLogger.EnableBuffer" title="(l) EnableBuffer()"
+                        data-gtmc="doc outline link">
+                      (l) EnableBuffer()
+                    </a>
+                  </li>
+                
+                  <li>
                     <a href="#EventLogger.EnableFileLogging" title="(l) EnableFileLogging(filePath)"
                         data-gtmc="doc outline link">
                       (l) EnableFileLogging(filePath)
+                    </a>
+                  </li>
+                
+                  <li>
+                    <a href="#EventLogger.GetBuffer" title="(l) GetBuffer()"
+                        data-gtmc="doc outline link">
+                      (l) GetBuffer()
                     </a>
                   </li>
                 
@@ -900,7 +914,11 @@
 <li>
             <a href="#EventLogger.Close">func (l *EventLogger) Close() error</a></li>
 <li>
+            <a href="#EventLogger.EnableBuffer">func (l *EventLogger) EnableBuffer()</a></li>
+<li>
             <a href="#EventLogger.EnableFileLogging">func (l *EventLogger) EnableFileLogging(filePath string) error</a></li>
+<li>
+            <a href="#EventLogger.GetBuffer">func (l *EventLogger) GetBuffer() []string</a></li>
 <li>
             <a href="#EventLogger.Log">func (l *EventLogger) Log(subject, action string)</a></li>
 </ul></li>
@@ -982,6 +1000,26 @@
     
   
   
+    <h4 tabindex="-1" id="EventLogger.EnableBuffer" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*EventLogger) <a class="Documentation-source" href="../../../../files/home/karol/scs_tu1314_kwiatek/github.com/karolkwiatek1/secure-exchange/logger/logger.go/index.html">EnableBuffer</a> <a class="Documentation-idLink" href="#EventLogger.EnableBuffer" title="Go to EventLogger.EnableBuffer" aria-label="Go to EventLogger.EnableBuffer">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (l *<a href="#EventLogger">EventLogger</a>) EnableBuffer()</pre>
+    </div>
+  <p>EnableBuffer activates the in-memory ring buffer (used by UI to display logs).
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
     <h4 tabindex="-1" id="EventLogger.EnableFileLogging" data-kind="method" class="Documentation-typeMethodHeader">
       <span>func (*EventLogger) <a class="Documentation-source" href="../../../../files/home/karol/scs_tu1314_kwiatek/github.com/karolkwiatek1/secure-exchange/logger/logger.go/index.html">EnableFileLogging</a> <a class="Documentation-idLink" href="#EventLogger.EnableFileLogging" title="Go to EventLogger.EnableFileLogging" aria-label="Go to EventLogger.EnableFileLogging">¶</a></span>
   <span class="Documentation-sinceVersion">
@@ -995,6 +1033,26 @@
     </div>
   <p>EnableFileLogging opens a log file and writes all subsequent log entries to it
 in addition to the existing writer (e.g. stdout).
+</p>
+
+  
+
+  </div><div class="Documentation-typeMethod">
+    
+  
+  
+    <h4 tabindex="-1" id="EventLogger.GetBuffer" data-kind="method" class="Documentation-typeMethodHeader">
+      <span>func (*EventLogger) <a class="Documentation-source" href="../../../../files/home/karol/scs_tu1314_kwiatek/github.com/karolkwiatek1/secure-exchange/logger/logger.go/index.html">GetBuffer</a> <a class="Documentation-idLink" href="#EventLogger.GetBuffer" title="Go to EventLogger.GetBuffer" aria-label="Go to EventLogger.GetBuffer">¶</a></span>
+  <span class="Documentation-sinceVersion">
+    
+  </span>
+</h4>
+
+    
+    <div class="Documentation-declaration">
+      <pre>func (l *<a href="#EventLogger">EventLogger</a>) GetBuffer() []<a href="../../../../builtin/index.html">string</a></pre>
+    </div>
+  <p>GetBuffer returns a copy of the in-memory log buffer.
 </p>
 
   

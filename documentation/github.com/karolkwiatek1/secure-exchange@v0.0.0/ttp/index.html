@@ -835,9 +835,9 @@
                   </li>
                 
                   <li>
-                    <a href="#Service.InitServerAuth" title="(s) InitServerAuth(serverID)"
+                    <a href="#Service.InitServerAuth" title="(s) InitServerAuth(serverID, certPEM)"
                         data-gtmc="doc outline link">
-                      (s) InitServerAuth(serverID)
+                      (s) InitServerAuth(serverID, certPEM)
                     </a>
                   </li>
                 
@@ -928,7 +928,7 @@
 <li>
             <a href="#Service.GetCACert">func (s *Service) GetCACert() []byte</a></li>
 <li>
-            <a href="#Service.InitServerAuth">func (s *Service) InitServerAuth(serverID string) (string, error)</a></li>
+            <a href="#Service.InitServerAuth">func (s *Service) InitServerAuth(serverID string, certPEM string) (string, error)</a></li>
 <li>
             <a href="#Service.RegisterEntity">func (s *Service) RegisterEntity(encryptedEntityID []byte, pubKey *rsa.PublicKey) ([]byte, error)</a></li>
 </ul></li>
@@ -1084,7 +1084,7 @@
 
     
     <div class="Documentation-declaration">
-      <pre>func (s *<a href="#Service">Service</a>) InitServerAuth(serverID <a href="../../../../builtin/index.html">string</a>) (<a href="../../../../builtin/index.html">string</a>, <a href="../../../../builtin/index.html">error</a>)</pre>
+      <pre>func (s *<a href="#Service">Service</a>) InitServerAuth(serverID <a href="../../../../builtin/index.html">string</a>, certPEM <a href="../../../../builtin/index.html">string</a>) (<a href="../../../../builtin/index.html">string</a>, <a href="../../../../builtin/index.html">error</a>)</pre>
     </div>
   <p>InitServerAuth verifies the server and creates a remporary session key
 </p>
