@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <title>Prosty Klient TTP</title>
     <style>
-        /* Prosty styl dla naszej konsoli logów */
         #konsola {
             height: 250px;
             overflow-y: auto;
@@ -56,24 +55,15 @@
     </div>
 
     <script>
-        // Funkcja pomocnicza do dodawania nowych linijek do historii
         function dodajLog(wiadomosc, typ = "info") {
             const konsola = document.getElementById('konsola');
             const nowaLinia = document.createElement('div');
-            
-            // Pobranie aktualnego czasu (GG:MM:SS)
             const czas = new Date().toLocaleTimeString();
-            
             nowaLinia.innerText = `[${czas}] ${wiadomosc}`;
-            
-            // Kolorowanie w zależności od typu wiadomości
             if (typ === "error") nowaLinia.className = "log-error";
             else if (typ === "success") nowaLinia.className = "log-success";
             else nowaLinia.className = "log-info";
-
             konsola.appendChild(nowaLinia);
-            
-            // Automatyczne przewijanie na sam dół
             konsola.scrollTop = konsola.scrollHeight;
         }
 
